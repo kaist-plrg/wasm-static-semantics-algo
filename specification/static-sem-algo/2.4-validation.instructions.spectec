@@ -1,0 +1,47 @@
+relation Instrs_ok:
+  context inferresulttype |- instr* : (inferresulttype, idx*)
+  hint(input %0 %1 %2)
+
+relation Instr_ok:
+  context inferresulttype |- instr : inferinstrtype
+  hint(input %0 %1 %2)
+
+dec $local(context, typeidx) : localtype
+def $local(C, x) = C.LOCALS[x]
+dec $init_local(context, typeidx) : context
+def $init_local(C, x) = C[ .LOCALS[x] = (LocalT Set t)]
+  -- if LocalT init t = $local(C, x)
+
+dec $init_locals(context, typeidx*) : context
+def $init_locals(C, eps) = C
+def $init_locals(C, x_1 :: x*) = $init_locals($init_local(C, x_1), x*)
+
+rule Instr_ok/binop:
+  C_0 irt |- BINOP bop : ({INS (NoEllipses, [t, t]), OUTS (NoEllipses, [t])}, eps)
+  -- if t = NumT $type_num<ibinop,ibinop,fbinop,fbinop>(bop)
+
+rule Instr_ok/local.get:
+  C_0 irt |- LOCAL.GET x : ({INS (NoEllipses, eps), OUTS (NoEllipses, t)}, eps)
+  -- if LocalT init t = $local(C_0, x)
+  -- if init = Set
+
+rule Instrs_ok/empty:
+  C_0 irt |- eps : (irt, eps)
+
+rule Instrs_ok/cons:
+  C_0 irt |- instr_1 :: instr* : (irt', idx'*)
+  -- Instr_ok: C_0 irt |- instr_1 : ({INS irt_1, OUTS irt_2}, idx*)
+  -- if C_1 = $init_locals(C_0, idx*)
+  -- if (ellipses, valtype*) = $push(C_0, irt_2, $pop(C_0, irt_1, irt))
+  -- Instrs_ok: C_1 (ellipses, valtype*) |-  instr* : (irt', idx'*)
+
+
+relation Block_ok:
+  context instrtype |- const : OK
+  hint(input %0 %1 %2)
+
+rule Block_ok:
+  C_0 (InstrT t_1* t_2* x*) |- instr* : OK
+  -- Instrs_ok: C_0 $stack(t_1*) |- instr* : (irt, x'*)
+  -- if (ellipses, t'*) = $pop(C_0, $stack(t_2*), irt)
+  -- if t'* = eps

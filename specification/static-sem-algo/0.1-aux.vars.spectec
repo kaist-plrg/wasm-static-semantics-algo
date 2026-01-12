@@ -1,0 +1,14 @@
+;;
+;; General Variable Conventions
+;;
+
+syntax N = nat
+syntax M = nat
+syntax n = nat  ;; hack
+syntax m = int  ;; hack
+syntax i = nat
+syntax j = nat
+
+dec $min(nat, nat) : nat
+def $min(i, j) = i  -- if $(i <= j)
+def $min(i, j) = j  -- otherwise

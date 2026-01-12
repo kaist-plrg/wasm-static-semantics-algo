@@ -1,0 +1,16 @@
+;; Instructions
+
+
+syntax instr hint(desc "instruction") =
+  | BINOP binop_
+  | LOCAL.GET localidx
+
+syntax const = instr*
+
+;; helper functions
+
+dec $type_num<A,B,C,D>(op<A,B,C,D>) : numtype
+def $type_num<A,B,C,D>(I32 A) = I32T
+def $type_num<A,B,C,D>(I64 B) = I64T
+def $type_num<A,B,C,D>(F32 C) = F32T
+def $type_num<A,B,C,D>(F64 D) = F64T

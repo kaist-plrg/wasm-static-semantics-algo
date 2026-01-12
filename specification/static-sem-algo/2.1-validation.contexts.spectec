@@ -1,0 +1,98 @@
+;; Stack typing
+
+syntax ellipses = NoEllipses | Ellipses
+
+syntax inferresulttype = (ellipses, valtype*)
+syntax inferfunctype = {INS inferresulttype, OUTS inferresulttype}
+syntax inferinstrtype = (inferfunctype, localidx*)
+
+var irt : inferresulttype
+var ift : inferfunctype
+
+;; Contexts
+
+syntax context  = {
+    TYPES deftype*,
+    FUNCS deftype*,
+    TABLES tabletype*,
+    MEMS memtype*,
+    TAGS tagtype*,
+    GLOBALS globaltype*,
+    ELEMS elemtype*,
+    DATAS datatype*,
+    LOCALS localtype*,
+    RESULTS valtype*,
+    LABELS resulttype*,
+    REFS free
+  }
+
+var C : context
+
+dec $empty_context : context
+
+def $empty_context = {
+  TYPES eps,
+  FUNCS eps,
+  TABLES eps,
+  MEMS eps,
+  TAGS eps,
+  GLOBALS eps,
+  ELEMS eps,
+  DATAS eps,
+  LOCALS eps,
+  RESULTS eps,
+  LABELS eps,
+  REFS $free_empty
+}
+
+relation Match_resulttype: context |- resulttype resulttype : OK
+  hint(input %0 %1 %2)
+
+rule Match_resulttype:
+  C |- t_1* t_2* : OK
+  -- if |t_1*| = |t_2*|
+  -- (if $match_valtype(C.TYPES, t_1, t_2))*
+
+dec $stack(resulttype) : (ellipses, resulttype)
+def $stack(resulttype) = (NoEllipses, resulttype)
+
+dec $make_<X>(X, nat) : X*
+def $make_<X>(X, n) = eps
+  -- if n = 0
+def $make_<X>(X, n) = $make_<X>(X, $(n-1)) ++ [X]
+  -- if $(n > 0)
+
+;; Pop
+dec $pop(context, (ellipses, resulttype), (ellipses, resulttype)) : (ellipses, resulttype)
+def $pop(C, (Ellipses, t_1*), (Ellipses, t_2*)) = (Ellipses, eps)
+  -- if n_1 = |t_1*|
+  -- if n_2 = |t_2*|
+  -- if n = $min(n_1, n_2)
+  -- if n_3 = $(n_1-n)
+  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- Match_resulttype: C |- ($make_<valtype>(BotT, n_3) ++ t_2'*) t_1* : OK
+def $pop(C, (NoEllipses, t_1*), (Ellipses, t_2*)) = (Ellipses, t_2*[0:n_2-n])
+  -- if n_1 = |t_1*|
+  -- if n_2 = |t_2*|
+  -- if n = $min(n_1, n_2)
+  -- if n_3 = $(n_1 - n)
+  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- Match_resulttype: C |- ($make_<valtype>(BotT, n_3) ++ t_2'*) t_1* : OK
+def $pop(C, (Ellipses, t_1*), (NoEllipses, t_2*)) = (NoEllipses, eps)
+  -- if n_1 = |t_1*|
+  -- if n_2 = |t_2*|
+  -- if n = $min(n_1, n_2)
+  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- Match_resulttype: C |- t_2'* t_1* : OK
+def $pop(C, (NoEllipses, t_1*), (NoEllipses, t_2*)) = (NoEllipses, t_2*[0:n_2-n])
+  -- if n_1 = |t_1*|
+  -- if n_2 = |t_2*|
+  -- if n = $min(n_1, n_2)
+  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- Match_resulttype: C |- t_2'* t_1* : OK
+
+;; Push
+dec $push(context, (ellipses, resulttype), (ellipses, resulttype)) : (ellipses, resulttype)
+def $push(C, (NoEllipses, t_1*), (NoEllipses, t_2*)) = (NoEllipses, t_2* ++ t_1*)
+def $push(C, (NoEllipses, t_1*), (Ellipses, t_2*)) = (Ellipses, t_2* ++ t_1*)
+def $push(C, (Ellipses, t_1*), (ellipses_2, eps)) = (Ellipses, t_1*)
