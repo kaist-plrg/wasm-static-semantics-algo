@@ -6,8 +6,8 @@ syntax null = NoNull | Null
 syntax mut = Cons | Var
 syntax init = Set | Unset
 syntax final = Final | NoFinal
-syntax limits = {MIN int, MAX int?}
-syntax range = i64
+syntax limits = {MIN u64, MAX u64?}
+syntax range = u64
 
 syntax typevar =
   | StatX typeidx | RecX nat

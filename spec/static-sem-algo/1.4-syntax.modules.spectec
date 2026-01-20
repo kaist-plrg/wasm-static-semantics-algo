@@ -23,17 +23,17 @@ syntax memory = {
 }
 
 syntax tag = {
-  TGTYPE idx
+  TGTYPE typeidx
 }
 
 syntax func = {
-  FTYPE idx,
+  FTYPE typeidx,
   LOCALS local*,
   BODY const
 }
 
 syntax start = {
-  SFUNC idx
+  SFUNC funcidx
 }
 
 syntax active = {
@@ -58,18 +58,18 @@ syntax data = {
 }
 
 syntax importdesc =
-  | FuncImport idx
+  | FuncImport typeidx
   | TableImport tabletype
   | MemImport memtype
   | GlobalImport globaltype
-  | TagImport idx
+  | TagImport typeidx
 
 syntax exportdesc =
-  | FuncExport idx
-  | TableExport idx
-  | MemExport idx
-  | GlobalExport idx
-  | TagExport idx
+  | FuncExport funcidx
+  | TableExport tableidx
+  | MemExport memidx
+  | GlobalExport globalidx
+  | TagExport tagidx
 
 syntax import = {
   MODULENAME name,

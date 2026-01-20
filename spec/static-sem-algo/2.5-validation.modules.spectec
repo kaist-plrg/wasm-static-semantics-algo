@@ -26,6 +26,7 @@ relation Exports_ok: context nameset |- export* : nameset   hint(input %0 %1 %2)
 relation Export_ok: context nameset |- export : nameset     hint(input %0 %1 %2)
 relation Const_ok: context valtype |- const : OK            hint(input %0 %1 %2)
 relation Module_ok: |- module : OK                          hint(input %0)
+relation Modules_ok: |- module* : OK                        hint(input %0)
 
 dec $functype(context, typeidx) : functype
 def $functype(C, x) = ft
@@ -267,8 +268,6 @@ rule Module_ok:
   -- Start_ok: C_8 |- module.START : OK
   -- Exports_ok: C_8 `{ eps } |- module.EXPORTS : nameset
 
-
-
-
-
-
+rule Modules_ok:
+  |- module* : OK
+  -- (Module_ok: |- module : OK)*
