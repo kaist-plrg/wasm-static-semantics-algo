@@ -38,13 +38,13 @@ rule Type_ok:
   C_0 |- type : C_1
   -- (Rectype_ok: C_0 |- type : C_1)
 
-rule Types_ok/empty:
-  C_0 |- eps : C_0
-
 rule Types_ok/cons:
   C_0 |- type_1 :: type* : C_2
   -- Type_ok: C_0 |- type_1 : C_1
   -- Types_ok: C_1 |- type* : C_2
+
+rule Types_ok/nil:
+  C_0 |- eps : C_0
 
 ;; Imports
 
@@ -73,10 +73,13 @@ rule Import_ok/tag:
   -- if ft = $functype(C_0, x)
   -- if C_1 = C_0[ .TAGS = C_0.TAGS ++ [TagT (C_0.TYPES[x])] ]
 
-rule Imports_ok:
+rule Imports_ok/cons:
   C_0 |- import_1 :: import* : C_2
   -- Import_ok: C_0 |- import_1 : C_1
   -- Imports_ok: C_1 |- import* : C_2
+
+rule Imports_ok/nil:
+  C_0 |- eps : C_0
 
 dec $defaultable(valtype) : bool
 def $defaultable(NumT nt) = true
@@ -108,10 +111,13 @@ rule Funcbody_ok:
   -- if C_3 = C_2[ .LABELS = [t_2*] ]
   -- Block_ok: C_3 (InstrT eps t_2* eps) |- instr* : OK
 
-rule Funcs_ok:
+rule Funcs_ok/cons:
   C_0 |- func_1 :: func* : C_2
   -- Func_ok: C_0 |- func_1 : C_1
   -- Funcs_ok: C_1 |- func* : C_2
+
+rule Funcs_ok/nil:
+  C_0 |- eps : C_0
 
 rule Func_ok:
   C_0 |- { FTYPE x, LOCALS local*, BODY instr* } : C_1
@@ -127,10 +133,13 @@ rule Const_ok:
   -- (if $is_const(C_0, instr))*
   -- Block_ok: C_0 (InstrT eps ([t]) eps) |- instr* : OK
 
-rule Tables_ok:
+rule Tables_ok/cons:
   C_0 |- table_1 :: table* : C_2
   -- Table_ok: C_0 |- table_1 : C_1
   -- Tables_ok: C_1 |- table* : C_2
+
+rule Tables_ok/nil:
+  C_0 |- eps : C_0
 
 rule Table_ok:
   C_0 |- { TTYPE tt, TINIT const } : C_1
@@ -139,20 +148,26 @@ rule Table_ok:
   -- Const_ok: C_0 (RefT rt) |- const : OK
   -- if C_1 = C_0[ .TABLES = C_0.TABLES ++ [tt] ]
 
-rule Mems_ok:
+rule Mems_ok/cons:
   C_0 |- memory_1 :: memory* : C_2
   -- Mem_ok: C_0 |- memory_1 : C_1
   -- Mems_ok: C_1 |- memory* : C_2
+
+rule Mems_ok/nil:
+  C_0 |- eps : C_0
 
 rule Mem_ok:
   C_0 |- { MTYPE mt } : C_1
   -- Memtype_ok: C_0 |- mt : OK
   -- if C_1 = C_0[ .MEMS = C_0.MEMS ++ [mt] ]
 
-rule Globals_ok:
+rule Globals_ok/cons:
   C_0 |- global_1 :: global* : C_2
   -- Global_ok: C_0 |- global_1 : C_1
   -- Globals_ok: C_1 |- global* : C_2
+
+rule Globals_ok/nil:
+  C_0 |- eps : C_0
 
 rule Global_ok:
   C_0 |- { GTYPE gt, GINIT const } : C_1
@@ -161,20 +176,26 @@ rule Global_ok:
   -- Const_ok: C_0 t |- const : OK
   -- if C_1 = C_0[ .GLOBALS = C_0.GLOBALS ++ [gt] ]
 
-rule Tags_ok:
+rule Tags_ok/cons:
   C_0 |- tag_1 :: tag* : C_2
   -- Tag_ok: C_0 |- tag_1 : C_1
   -- Tags_ok: C_1 |- tag* : C_2
+
+rule Tags_ok/nil:
+  C_0 |- eps : C_0
 
 rule Tag_ok:
   C_0 |- { TGTYPE x } : C_1
   -- if FuncT _ eps = $functype(C_0, x)
   -- if C_1 = C_0[ .TAGS = C_0.TAGS ++ [TagT (C_0.TYPES[x])] ]
 
-rule Elems_ok:
+rule Elems_ok/cons:
   C_0 |- elem_1 :: elem* : C_2
   -- Elem_ok: C_0 |- elem_1 : C_1
   -- Elems_ok: C_1 |- elem* : C_2
+
+rule Elems_ok/nil:
+  C_0 |- eps : C_0
 
 rule Elemmode_ok/passive:
   C_0 rt |- Passive : OK
@@ -195,10 +216,13 @@ rule Elem_ok:
   -- Elemmode_ok: C_0 rt |- segmentmode : OK
   -- if C_1 = C_0[ .ELEMS = C_0.ELEMS ++ [rt] ]
 
-rule Datas_ok:
+rule Datas_ok/cons:
   C_0 |- data_1 :: data* : C_2
   -- Data_ok: C_0 |- data_1 : C_1
   -- Datas_ok: C_1 |- data* : C_2
+
+rule Datas_ok/nil:
+  C_0 |- eps : C_0
 
 rule Datamode_ok/passive:
   C_0 |- Passive : OK
@@ -241,10 +265,13 @@ rule Export_ok/tag:
   -- if jt = C_0.TAGS[x]
   -- if ~$in_set<name>(name, nameset)
 
-rule Exports_ok:
+rule Exports_ok/cons:
   C_0 nameset_0 |- export_1 :: export* : nameset_2
   -- Export_ok: C_0 nameset_0 |- export_1 : nameset_1
   -- Exports_ok: C_0 nameset_1 |- export* : nameset_2
+
+rule Exports_ok/nil:
+  C_0 nameset_0 |- eps : nameset_0
 
 rule Module_ok:
   |- module : OK
@@ -268,6 +295,9 @@ rule Module_ok:
   -- Start_ok: C_8 |- module.START : OK
   -- Exports_ok: C_8 `{ eps } |- module.EXPORTS : nameset
 
-rule Modules_ok:
+rule Modules_ok/cons:
   |- module* : OK
   -- (Module_ok: |- module : OK)*
+
+rule Modules_ok/nil:
+  |- eps : OK
