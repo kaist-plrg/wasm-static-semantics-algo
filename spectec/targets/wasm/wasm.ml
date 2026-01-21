@@ -83,7 +83,8 @@ module Typecheck = struct
           | _ -> failwith "unsupported command type") commands
         |> List.split
       in
-      Ok ("Module_ok", List.map il_of_module wasts)
+      let il_modules = il_of_list "module" il_of_module wasts in
+      Ok ("Modules_ok", [ il_modules ])
 (*    | ".wat" ->
       let m, cs =
         filename
