@@ -1,0 +1,6 @@
+(include_subdirs unqualified)
+
+(library
+ (name targets_wasm)
+ (public_name spectec.targets.wasm)
+ (libraries spectec.runner spectec.lang wasm_interpreter))
