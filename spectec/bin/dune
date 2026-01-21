@@ -4,4 +4,4 @@
  (preprocess
   (pps ppx_let))
  (modules main)
- (libraries spectec cli targets core core_unix core_unix.command_unix))
+ (libraries spectec cli p4_ wasm_ core core_unix core_unix.command_unix))

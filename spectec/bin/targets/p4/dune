@@ -1,5 +1,5 @@
 (library
- (name targets)
+ (name p4_)
  (libraries core cli targets_p4)
  (preprocess
   (pps ppx_let)))

@@ -1,0 +1,5 @@
+(library
+  (name wasm_)
+  (libraries core cli targets_wasm)
+  (preprocess
+    (pps ppx_let)))

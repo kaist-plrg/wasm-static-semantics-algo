@@ -67,14 +67,49 @@ let p4parse_command =
            Format.printf "Roundtrip failed:\n  %s\n"
              (Runner.Error.string_of_error e))
 
+let wasm_parse_command =
+  Core.Command.basic ~summary:"parse a Wasm program"
+    (let open Core.Command.Let_syntax in
+     let open Core.Command.Param in
+     let%map filename = flag "-p" (required string) ~doc:"wasm file to parse" in
+     fun () ->
+       let do_parse () =
+         let filenames_spec = Cli.Command.collect_spec_files Targets_wasm.Wasm.Target.spec_dir in
+         let* spec = Runner.parse_spec_files filenames_spec in
+         let* spec_il = Runner.elaborate spec in
+         let input =
+           Targets_wasm.Wasm.Typecheck.make ~filename () in
+         let* (_, values) =
+           Targets_wasm.Wasm.Typecheck.parse ~spec:spec_il input
+         in
+           Ok (spec_il, values)
+      in
+      match Runner.Handlers.il do_parse with
+      | Ok (spec_il, values) ->
+        Format.printf "Parse succeeded:\n";
+        List.iter (fun v ->
+            Format.printf "%a\n" (Concrete.Pp.pp_program spec_il) v) values;
+      | _ ->
+         Format.printf "Parse failed\n")
+
+
 (* Instantiate CLI commands for P4 *)
 module P4_Cmd = Cli.Command.Make (Targets_p4.P4.Target)
+
+(* Instantiate CLI commands for Wasm *)
+module Wasm_Cmd = Cli.Command.Make (Targets_wasm.Wasm.Target)
 
 let p4_command =
   let tasks = [ P4_Cmd.Pack (module Targets_p4.P4.Typecheck) ] in
   Core.Command.group ~summary:"P4 commands"
     [
-      ("typecheck", Targets.P4.command); ("coverage", P4_Cmd.make_coverage tasks);
+      ("typecheck", P4_.P4.command); ("coverage", P4_Cmd.make_coverage tasks);
+    ]
+
+let wasm_command =
+  Core.Command.group ~summary:"Wasm commands"
+    [
+      ("typecheck", Wasm_.Wasm.command);
     ]
 
 let command =
@@ -84,6 +119,10 @@ let command =
       ("struct", structure_command);
       ("p4parse", p4parse_command);
       ("p4", p4_command);
+      ("wasmparse", wasm_parse_command);
+      ("wasm", wasm_command);
     ]
 
 let () = Command_unix.run ~version command
+
+
