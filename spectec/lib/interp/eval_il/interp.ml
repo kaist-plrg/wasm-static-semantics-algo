@@ -91,6 +91,14 @@ let rec assign_exp (ctx : Ctx.t) (exp : exp) (value : value) : Ctx.t =
           in
           Ctx.add_value Local ctx (id, iters @ [ List ]) value_sub)
         ctx vars
+  (* TODO: StructE & StructV assignment *)
+  | StrE expfields, StructV valfields ->
+    List.fold_left
+      (fun ctx (expfield, valfield) ->
+        let (_, exp) = expfield in
+        let (_, value) = valfield in
+        assign_exp ctx exp value)
+      ctx (List.combine expfields valfields)
   | _ ->
       error exp.at
         (F.asprintf "(TODO) match failed %s <- %s" (Print.string_of_exp exp)
