@@ -155,6 +155,40 @@ rule Rectype_ok:
   -- (Subtype_ok: C_1 |- st : OK)*
   -- (Subtype_sub_ok: C_1 $(x+n) |- st : OK)*
 
+relation Pack_ok: int |- packtype : OK   hint(input %0 %1)
+relation Unop_ok: |- unop_ : OK          hint(input %0)
+relation Vecbinop_ok: |- vbinop_ : OK    hint(input %0)
 
+rule Pack_ok:
+  i |- packtype : OK
+  -- if $($pack_size(packtype) < i)
+
+rule Unop_ok/i32:
+  |- uop : OK
+  -- if uop = I32 (ExtendS packtype)
+  -- Pack_ok: $num_size($type_num<iunop, iunop, funop, funop>(uop)) |- packtype : OK
+
+rule Unop_ok/i64:
+  |- uop : OK
+  -- if uop = I64 (ExtendS packtype)
+  -- Pack_ok: $num_size($type_num<iunop, iunop, funop, funop>(uop)) |- packtype : OK
+
+rule Unop_ok/else:
+  |- uop : OK
+
+dec $check_lane_index(int*) : bool
+def $check_lane_index(i_1 :: i*) = false
+  -- if $(i_1 >= 32)
+def $check_lane_index(i_1 :: i*) = $check_lane_index(i*)
+  -- if $(i_1 < 32)
+def $check_lane_index(eps) = true
+
+rule Vecbinop_ok/i816:
+  |- vbop : OK
+  -- if vbop = V128 (I8x16 (Shuffle i*))
+  -- if $check_lane_index(i*)
+
+rule Vecbinop_ok/else:
+  |- vbop : OK
 
 

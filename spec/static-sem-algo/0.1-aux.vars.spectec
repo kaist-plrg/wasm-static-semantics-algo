@@ -5,7 +5,7 @@
 syntax N = nat
 syntax M = nat
 syntax n = nat  ;; hack
-syntax m = int  ;; hack
+syntax m = nat  ;; hack
 syntax i = nat
 syntax j = nat
 

@@ -41,6 +41,7 @@ syntax resulttype = valtype*
 syntax instrtype = InstrT resulttype resulttype localidx*
 
 syntax packtype = I8 | I16
+syntax extension = SX | ZX
 
 syntax storagetype =
   | ValStorageT valtype
@@ -247,3 +248,18 @@ def $numtype_of_addrtype(I64AT) = I64T
 
 dec $functype_of_strtype(strtype) : functype
 def $functype_of_strtype(DefFuncT ft) = ft
+
+dec $min_addrtype(addrtype, addrtype) : addrtype
+def $min_addrtype(at_1, at_2) = I64AT
+  -- if at_1 = I64AT /\ at_2 = I64AT
+def $min_addrtype(at_1, at_2) = I32AT -- otherwise
+
+dec $num_size(numtype) : int
+def $num_size(nt) = 4
+  -- if nt = I32T \/ nt = F32T
+def $num_size(nt) = 8
+  -- if nt = I64T \/ nt = F64T
+
+dec $pack_size(packtype) : int
+def $pack_size(I8) = 1
+def $pack_size(I16) = 2

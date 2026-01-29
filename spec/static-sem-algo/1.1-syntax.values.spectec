@@ -6,9 +6,42 @@ syntax u32 = nat
 syntax u64 = nat
 syntax i32 = int
 syntax i64 = int
+syntax exp = int
 syntax byte = nat
 syntax char = nat
 syntax name = char*
+syntax void
+
+;; Floating-point
+
+syntax fmag =
+  | NORM m exp
+  | SUBNORM m
+  | INF
+  | NAN (m)
+
+syntax f32mag = fmag
+syntax f64mag = fmag
+
+syntax f32 =
+  | POS f32mag
+  | NEG f32mag
+
+syntax f64 =
+  | POS f64mag
+  | NEG f64mag
+
+;; Vectors
+syntax vecop<A> =
+  | V128 A
+
+syntax laneop<A,B,C,D,E,F> =
+  | I8x16 A | I16x8 B | I32x4 C | I64x2 D
+  | F32x4 E | F64x2 F
+
+syntax v128 = text
+syntax vec_ = vecop<v128>
+var vec : vec_
 
 dec $min_i64 : i64
 def $min_i64 = $(-9223372036854775808)
@@ -51,20 +84,6 @@ var y : idx
 var ti : typeidx
 var l : labelidx
 var xx : externidx
-
-;; Operators
-syntax op<A, B, C, D> =
-  | I32 A | I64 B | F32 C | F64 D
-
-syntax ibinop =
-  | IAdd | ISub | IMul | IDivS | IDivU | IRemS | IRemU
-  | IAnd | IOr | IXor | IShl | IShrS | IShrU | IRotl | IRotr
-syntax fbinop =
-  | FAdd | FSub | FMul | FDiv | FMin | FMax | FCopysign
-
-syntax binop_ = op<ibinop, ibinop, fbinop, fbinop>
-
-var bop : binop_
 
 ;; set functions
 
