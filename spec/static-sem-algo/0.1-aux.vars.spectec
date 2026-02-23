@@ -12,3 +12,9 @@ syntax j = nat
 dec $min_(nat, nat) : nat
 def $min_(i, j) = i  -- if $(i <= j)
 def $min_(i, j) = j  -- otherwise
+
+dec $lsl_(int, int) : int
+def $lsl_(int_1, int_2) = $lsl_($(int_1 - 1), $(int_2 * 2))
+  -- if $(int_1 > 0)
+def $lsl_(int_1, int_2) = int_2
+  -- otherwise

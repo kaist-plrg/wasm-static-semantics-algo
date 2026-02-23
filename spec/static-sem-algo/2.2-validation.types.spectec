@@ -24,6 +24,7 @@ relation Memtype_ok: context |- memtype : OK    hint(input %0 %1)
 relation Globaltype_ok: context |- globaltype : OK  hint(input %0 %1)
 relation Limits_ok: context range |- limits : OK  hint(input %0 %1 %2)
 relation Tabletype_ok: context |- tabletype : OK  hint(input %0 %1)
+relation Blocktype_ok: context |- blocktype : instrtype hint(input %0 %1)
 
 rule Numtype_ok:
   C_0 |- numtype : OK
@@ -191,4 +192,173 @@ rule Vecbinop_ok/i816:
 rule Vecbinop_ok/else:
   |- vbop : OK
 
+dec $array_type(context, typeidx) : arraytype
+def $array_type(C, x) = arrt
+  -- if DefArrayT arrt = $expanddt(C.TYPES[x])
 
+dec $struct_type(context, typeidx) : structtype
+def $struct_type(C, x) = strctt
+  -- if DefStructT strctt = $expanddt(C.TYPES[x])
+
+relation Loadop_ok: context |- loadop_ : numtype  hint(input %0 %1)
+
+rule Loadop_ok/some-i32at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK (packtype, extension) } : nt
+  -- Pack_ok: $num_size(nt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Loadop_ok/some-i64at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK (packtype, extension) } : nt
+  -- Pack_ok: $num_size(nt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+rule Loadop_ok/none-i32at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
+  -- if int_3 = $num_size(nt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Loadop_ok/none-i64at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
+  -- if int_3 = $num_size(nt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+relation Storeop_ok: context |- storeop_ : numtype  hint(input %0 %1)
+
+rule Storeop_ok/some-i32at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK packtype } : nt
+  -- Pack_ok: $num_size(nt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Storeop_ok/some-i64at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK packtype } : nt
+  -- Pack_ok: $num_size(nt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+rule Storeop_ok/none-i32at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
+  -- if int_3 = $num_size(nt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Storeop_ok/none-i64at:
+  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
+  -- if int_3 = $num_size(nt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+relation Vloadop_ok: context |- vloadop_ : vectype  hint(input %0 %1)
+
+rule Vloadop_ok/some-i32at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK (packtype, vextension) } : vt
+  -- Pack_ok: $vec_size(vt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Vloadop_ok/some-i64at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK (packtype, vextension) } : vt
+  -- Pack_ok: $vec_size(vt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+rule Vloadop_ok/none-i32at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK eps } : vt
+  -- if int_3 = $vec_size(vt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Vloadop_ok/none-i64at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK eps } : vt
+  -- if int_3 = $vec_size(vt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+relation Vstoreop_ok: context |- vstoreop_ : vectype  hint(input %0 %1)
+
+rule Vstoreop_ok/none-i32at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK void } : vt
+  -- if int_3 = $vec_size(vt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Vstoreop_ok/none-i64at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK void } : vt
+  -- if int_3 = $vec_size(vt)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+relation Vlaneop_ok: context |- vlaneop_ : vectype  hint(input %0 %1)
+
+rule Vlaneop_ok/some-i32at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK packtype } : vt
+  -- Pack_ok: $vec_size(vt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I32AT lim = C_0.MEMS[0]
+  -- if $lt_u(int_2, 100000000)
+
+rule Vlaneop_ok/some-i64at:
+  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK packtype } : vt
+  -- Pack_ok: $vec_size(vt) |- packtype : OK
+  -- if int_3 = $pack_size(packtype)
+  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
+  -- if MemoryT I64AT lim = C_0.MEMS[0]
+
+dec $func_type(context, typeidx) : functype
+def $func_type(C, x) = ft
+  -- if DefFuncT ft = $expanddt(C.TYPES[x])
+
+rule Blocktype_ok/valblocktype.none:
+  C_0 |- ValBlockType eps : InstrT eps eps eps
+
+rule Blocktype_ok/valblocktype.some:
+  C_0 |- ValBlockType t : InstrT eps t eps
+  -- Valtype_ok: C_0 |- t : OK
+
+rule Blocktype_ok/varblocktype:
+  C_0 |- VarBlockType x : InstrT t_1* t_2* eps
+  -- if FuncT t_1* t_2* = $func_type(C_0, x)
+
+relation Catch_ok: context resulttype |- catch : OK   hint(input %0 %1 %2)
+
+rule Catch_ok/catch:
+  C_0 t* |- Catch x y : OK
+  -- if TagT dt = C_0.TAGS[x]
+  -- if FuncT t_1* t_2* = $functype_of_strtype($expanddt(dt))
+  -- if $match_resulttype(C_0.TYPES, t_1*, C_0.LABELS[y])
+
+rule Catch_ok/catch_ref:
+  C_0 t* |- CatchRef x y : OK
+  -- if TagT dt = C_0.TAGS[x]
+  -- if FuncT t_1* t_2* = $functype_of_strtype($expanddt(dt))
+  -- if $match_resulttype(C_0.TYPES, t_1* ++ [RefT (NoNull ExnHT)], C_0.LABELS[y])
+
+rule Catch_ok/catch_all:
+  C_0 t* |- CatchAll x : OK
+  -- if $match_resulttype(C_0.TYPES, eps, C_0.LABELS[x])
+
+rule Catch_ok/catch_all_ref:
+  C_0 t* |- CatchAllRef x : OK
+  -- if $match_resulttype(C_0.TYPES, [RefT (NoNull ExnHT)], C_0.LABELS[x])
+
+dec $diff_reftype(reftype, reftype) : reftype
+def $diff_reftype(null_1 ht_1, Null ht_2) = (NoNull ht_1)
+def $diff_reftype(null_1 ht_1, NoNull ht_2) = (null_1 ht_1)

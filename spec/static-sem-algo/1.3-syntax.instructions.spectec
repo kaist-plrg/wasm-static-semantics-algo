@@ -4,6 +4,13 @@
 syntax op<A, B, C, D> =
   | I32 A | I64 B | F32 C | F64 D
 
+syntax memop<A,B> = {
+  TYPE A,
+  ALIGN int,
+  OFFSET int,
+  PACK B
+}
+
 syntax iunop =
   | Clz | Ctz | Popcnt | ExtendS packtype
 syntax funop =
@@ -14,9 +21,12 @@ var uop : unop_
 syntax ibinop =
   | IAdd | ISub | IMul | IDivS | IDivU | IRemS | IRemU
   | IAnd | IOr | IXor | IShl | IShrS | IShrU | IRotl | IRotr
+
 syntax fbinop =
   | FAdd | FSub | FMul | FDiv | FMin | FMax | FCopysign
+
 syntax binop_ = op<ibinop, ibinop, fbinop, fbinop>
+
 var bop : binop_
 
 syntax irelop =
@@ -144,13 +154,55 @@ syntax vreplaceop = laneop<vnreplaceop, vnreplaceop, vnreplaceop, vnreplaceop, v
 syntax vreplaceop_ = vecop<vreplaceop>
 var vrepop : vreplaceop_
 
+syntax externop_ = Internalize | Externalize
+var eop : externop_
+
+;; Array
+syntax initop_ = Explicit | Implicit
+var iop : initop_
+
+;; memory
+syntax loadop_ = memop<numtype, (packtype, extension)?>
+syntax storeop_ = memop<numtype, packtype?>
+syntax vloadop_ = memop<vectype, (packtype, vextension)?>
+syntax vstoreop_ = memop<vectype, void>
+syntax vlaneop_ = memop<vectype, packtype>
+
+syntax blocktype =
+  | VarBlockType typeidx
+  | ValBlockType valtype?
+
+syntax catch =
+  | Catch idx idx
+  | CatchRef idx idx
+  | CatchAll idx
+  | CatchAllRef idx
+
 syntax instr =
-  | UNARY unop_
-  | TEST testop_
-  | BINOP binop_
-  | CONVERT cvtop_
-  | COMPARE relop_
-  | CONST num_
+  | UNREACHABLE
+  | NOP
+  | DROP
+  | SELECT (valtype*)?
+  | BLOCK blocktype instr*
+  | LOOP blocktype instr*
+  | IF blocktype instr* ELSE instr*
+  | BR labelidx
+  | BR_IF labelidx
+  | BR_TABLE labelidx* labelidx
+  | BR_ON_NULL labelidx
+  | BR_ON_NON_NULL labelidx
+  | BR_ON_CAST labelidx reftype reftype
+  | BR_ON_CAST_FAIL labelidx reftype reftype
+  | CALL funcidx
+  | CALL_REF funcidx
+  | CALL_INDIRECT tableidx funcidx
+  | RETURN
+  | RETURN_CALL funcidx
+  | RETURN_CALL_REF typeidx
+  | RETURN_CALL_INDIRECT tableidx typeidx
+  | THROW tagidx
+  | THROW_REF
+  | TRY_TABLE blocktype catch* instr*
   | LOCAL.GET localidx
   | LOCAL.SET localidx
   | LOCAL.TEE localidx
@@ -164,6 +216,48 @@ syntax instr =
   | TABLE.COPY tableidx tableidx
   | TABLE.INIT tableidx elemidx
   | ELEM.DROP elemidx
+  | LOAD memidx loadop_
+  | STORE memidx storeop_
+  | VEC.LOAD memidx vloadop_
+  | VEC.STORE memidx vstoreop_
+  | VEC.LOAD_LANE memidx vlaneop_ int
+  | VEC.STORE_LANE memidx vlaneop_ int
+  | MEMORY.SIZE memidx
+  | MEMORY.GROW memidx
+  | MEMORY.FILL memidx
+  | MEMORY.COPY memidx memidx
+  | MEMORY.INIT memidx dataidx
+  | DATA.DROP dataidx
+  | REF.NULL heaptype
+  | REF.FUNC funcidx
+  | REF.IS_NULL
+  | REF.AS_NON_NULL
+  | REF.TEST reftype
+  | REF.CAST reftype
+  | REF.EQ
+  | REF.I31
+  | I31.GET extension
+  | STRUCT.NEW typeidx initop_
+  | STRUCT.GET typeidx typeidx extension?
+  | STRUCT.SET typeidx typeidx
+  | ARRAY.NEW typeidx initop_
+  | ARRAY.NEW_FIXED typeidx u32
+  | ARRAY.NEW_ELEM typeidx elemidx
+  | ARRAY.NEW_DATA typeidx dataidx
+  | ARRAY.GET typeidx extension?
+  | ARRAY.SET typeidx
+  | ARRAY.LEN
+  | ARRAY.COPY typeidx typeidx
+  | ARRAY.FILL typeidx
+  | ARRAY.INIT_DATA typeidx dataidx
+  | ARRAY.INIT_ELEM typeidx elemidx
+  | EXTERN.CONVERT externop_
+  | CONST num_
+  | TEST testop_
+  | COMPARE relop_
+  | UNARY unop_
+  | BINOP binop_
+  | CONVERT cvtop_
   | VEC.CONST vec_
   | VEC.TEST vtestop_
   | VEC.UNARY vunop_
@@ -261,3 +355,7 @@ def $num_lanes<A,B,C,D,E,F>(V128 (I32x4 _)) = 4
 def $num_lanes<A,B,C,D,E,F>(V128 (I64x2 _)) = 2
 def $num_lanes<A,B,C,D,E,F>(V128 (F32x4 _)) = 4
 def $num_lanes<A,B,C,D,E,F>(V128 (F64x2 _)) = 2
+
+dec $type_externop(externop_) : (heaptype, heaptype)
+def $type_externop(Internalize) = (ExternHT, AnyHT)
+def $type_externop(Externalize) = (AnyHT, ExternHT)

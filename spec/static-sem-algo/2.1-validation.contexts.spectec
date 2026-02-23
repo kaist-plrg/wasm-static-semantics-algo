@@ -96,3 +96,12 @@ dec $push(context, (ellipses, resulttype), (ellipses, resulttype)) : (ellipses, 
 def $push(C, (NoEllipses, t_1*), (NoEllipses, t_2*)) = (NoEllipses, t_2* ++ t_1*)
 def $push(C, (NoEllipses, t_1*), (Ellipses, t_2*)) = (Ellipses, t_2* ++ t_1*)
 def $push(C, (Ellipses, t_1*), (ellipses_2, eps)) = (Ellipses, t_1*)
+
+dec $peek(nat, inferresulttype) : valtype
+def $peek(n, (ellipses, t*)) = $rev_<valtype>(t*)[n]
+
+dec $peek_ref(nat, inferresulttype) : reftype
+def $peek_ref(n, (ellipses, t*)) = rt
+  -- if $peek(n, (ellipses, t*)) = RefT rt
+def $peek_ref(n, (ellipses, t*)) = (NoNull BotHT)
+  -- if $peek(n, (ellipses, t*)) = BotT

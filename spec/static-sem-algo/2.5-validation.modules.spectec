@@ -81,12 +81,6 @@ rule Imports_ok/cons:
 rule Imports_ok/nil:
   C_0 |- eps : C_0
 
-dec $defaultable(valtype) : bool
-def $defaultable(NumT nt) = true
-def $defaultable(VecT vt) = true
-def $defaultable(RefT (null ht)) = (null = Null)
-def $defaultable(_) = false -- otherwise
-
 relation Local_ok:
   context |- local : localtype
   hint(input %0 %1)

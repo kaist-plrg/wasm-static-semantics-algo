@@ -119,3 +119,24 @@ def $match_structtype(dt*, _, _) = false  -- otherwise
 def $match_strtype(dt*, DefStructT strctt_1, DefStructT strctt_2) = $match_structtype(dt*, strctt_1, strctt_2)
 def $match_strtype(dt*, DefArrayT arrt_1, DefArrayT arrt_2) = $match_arraytype(dt*, arrt_1, arrt_2)
 def $match_strtype(dt*, DefFuncT ft_1, DefFuncT ft_2) = $match_functype(dt*, ft_1, ft_2)
+
+dec $abs_of_str_type(strtype) : heaptype
+dec $top_of_str_type(deftype*, strtype) : heaptype
+dec $top_of_heap_type(deftype*, heaptype) : heaptype
+
+def $abs_of_str_type(DefStructT _) = StructHT
+def $abs_of_str_type(DefArrayT _) = StructHT
+def $abs_of_str_type(DefFuncT _) = FuncHT
+
+def $top_of_str_type(dt*, strt) = $top_of_heap_type(dt*, $abs_of_str_type(strt))
+
+def $top_of_heap_type(dt*, ht) = AnyHT
+  -- if ht <- [ AnyHT, NoneHT, EqHT, StructHT, ArrayHT, I31HT ]
+def $top_of_heap_type(dt*, ht) = FuncHT
+  -- if ht <- [ FuncHT, NoFuncHT ]
+def $top_of_heap_type(dt*, ht) = ExnHT
+  -- if ht <- [ ExnHT, NoExnHT ]
+def $top_of_heap_type(dt*, ht) = ExternHT
+  -- if ht <- [ ExternHT, NoExternHT ]
+def $top_of_heap_type(dt*, DefHT dt') = $top_of_str_type(dt*, $expanddt(dt'))
+def $top_of_heap_type(dt*, VarHT (StatX x)) = $top_of_str_type(dt*, $expanddt(dt*[x]))

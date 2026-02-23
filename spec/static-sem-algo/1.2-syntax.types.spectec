@@ -43,6 +43,12 @@ syntax instrtype = InstrT resulttype resulttype localidx*
 syntax packtype = I8 | I16
 syntax extension = SX | ZX
 
+syntax packshape = Pack8x8 | Pack16x4 | Pack32x2
+syntax vextension =
+  | ExtLane packshape extension
+  | ExtSplat
+  | ExtZero
+
 syntax storagetype =
   | ValStorageT valtype
   | PackStorageT packtype
@@ -260,6 +266,32 @@ def $num_size(nt) = 4
 def $num_size(nt) = 8
   -- if nt = I64T \/ nt = F64T
 
+dec $vec_size(vectype) : int
+def $vec_size(V128T) = 16
+
 dec $pack_size(packtype) : int
 def $pack_size(I8) = 1
 def $pack_size(I16) = 2
+
+dec $unpacked_storage_type(storagetype) : valtype
+def $unpacked_storage_type(ValStorageT t) = t
+def $unpacked_storage_type(PackStorageT pt) = NumT I32T
+
+dec $unpacked_field_type(fieldtype) : valtype
+def $unpacked_field_type(FieldT mut zt) = $unpacked_storage_type(zt)
+
+dec $is_num_type(valtype) : bool
+def $is_num_type(NumT _) = true
+def $is_num_type(BotT) = true
+def $is_num_type(t) = false
+  -- otherwise
+
+dec $is_vec_type(valtype) : bool
+def $is_vec_type(VecT _) = true
+def $is_vec_type(BotT) = true
+def $is_vec_type(t) = false
+  -- otherwise
+
+dec $is_packed_storage_type(storagetype) : bool
+def $is_packed_storage_type(ValStorageT _) = false
+def $is_packed_storage_type(PackStorageT _) = true
