@@ -9,13 +9,23 @@ module Il = Lang.Il
 module Value = Il.Value
 module Make = Value.Make
 
+let ($) it at = {it; at}
 (* il_of_* 함수는 il.value를 반환해야 한다. *)
 
 let default_table_max = 4294967295L
 let default_memory_max = 65536L
 
-let listV l = Il.ListV (l)
+type layout = { width : int; exponent : int; mantissa : int }
+let layout32 = { width = 32; exponent = 8; mantissa = 23 }
+let layout64 = { width = 64; exponent = 11; mantissa = 52 }
 
+let mask_sign layout = Z.shift_left Z.one (layout.width - 1)
+let mask_mag layout = Z.pred (mask_sign layout)
+let mask_mant layout = Z.(pred (shift_left one layout.mantissa))
+let mask_exp layout = Z.(mask_mag layout - mask_mant layout)
+let bias layout = let em1 = layout.exponent - 1 in Z.((one + one)**em1 - one)
+
+let listV l = Il.ListV (l)
 let optV opt = Il.OptV (opt)
 
 let il_of_list s f l = List.map f l |> Make.list (iter_t List (var_t s))
@@ -32,6 +42,9 @@ let bigint_of_z_nat z =
   assert (z >= Z.zero);
   Bigint.of_zarith_bigint z
 
+let bigint_of_z_int z =
+  Bigint.of_zarith_bigint z
+
 let bigint_of_nat32 i32 =
   Z.of_int32_unsigned i32 |> bigint_of_z_nat
 
@@ -40,11 +53,42 @@ let bigint_of_nat64 i64 =
 
 let bigint_of_nat i = Z.of_int i |> bigint_of_z_nat
 
+let il_of_fmagN layout i =
+  let n = Z.logand i (mask_exp layout) in
+  let m = Z.logand i (mask_mant layout) in
+  let mag = if layout.width = 32 then "f32mag" else "f64mag" in
+  if n = Z.zero then
+    [ Term "SUBNORM"; NT (Value.nat (bigint_of_z_nat m)) ] #@ mag
+  else if n <> mask_exp layout then
+    [ Term "NORM"; NT (Value.nat (bigint_of_z_nat m)); NT (Value.int (bigint_of_z_int Z.(shift_right n layout.mantissa - bias layout))) ] #@ mag
+  else if m = Z.zero then
+    [ Term "INF" ] #@ mag
+  else
+    [ Term "NAN"; NT (Value.nat (bigint_of_z_nat m)) ] #@ mag
+
+let il_of_floatN layout i =
+  let i' = Z.logand i (mask_mag layout) in
+  let symbols = [ if i' = i then Term "POS" else Term "NEG"; NT (il_of_fmagN layout i) ] in
+  symbols #@ "f32"
+
+let e64 = Z.(shift_left one 64)
+
+let vec128_to_z vec =
+  match V128.I64x2.to_lanes vec with
+  | [ v1; v2 ] -> Z.(of_int64_unsigned v1 + e64 * of_int64_unsigned v2)
+  | _ -> assert false
+
+let il_of_float32 f32 = F32.to_bits f32 |> Z.of_int32_unsigned |> il_of_floatN layout32
+
+let il_of_float64 f64 = F64.to_bits f64 |> Z.of_int64_unsigned |> il_of_floatN layout64
+
+let il_of_vec128 vec = vec128_to_z vec |> bigint_of_z_nat |> Value.nat
 (*
 let bigint_of_byte byte = Char.code byte |> bigint_of_nat
 
 let il_of_bytes bytes_ = String.to_seq bytes_ |> Seq.map bigint_of_byte |> il_of_seq Value.nat (Seq.map bigint_of_byte)
 *)
+
 let il_of_idx s idx =
   bigint_of_nat32 idx.it |> Make.nat (var_t s)
 
@@ -73,7 +117,7 @@ let string_of_int_binop = function
   | IntOp.DivS -> "IDivS"
   | IntOp.DivU -> "IDivU"
   | IntOp.RemS -> "IRemS"
-| IntOp.RemU -> "IRemU"
+  | IntOp.RemU -> "IRemU"
   | IntOp.And -> "IAnd"
   | IntOp.Or -> "IOr"
   | IntOp.Xor -> "IXor"
@@ -249,27 +293,68 @@ and il_of_memory_type = function
     let symbols = [ Term "MemoryT"; NT (il_of_addr_type at); NT (il_of_limits default_memory_max limits) ] in
     symbols #@ "memtype"
 
+let rename_i_to_f s =
+  if String.length s > 0 && s.[0] = 'i' then
+    "f" ^ String.sub s 1 (String.length s - 1)
+  else
+    s
+
+and rename_f_to_i s =
+  if String.length s > 0 && s.[0] = 'f' then
+    "i" ^ String.sub s 1 (String.length s - 1)
+  else
+    s
+
 let il_of_op f1 f2 = function
   | I32 op ->
+    let open Common.Source in
     let v = f1 op in
-    let (id, _, _) = flatten_case_v v in
+    let iid = id_of_case_v v in
+    let fid = rename_i_to_f iid in
+    let id = var_t' "op" [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t fid) $ no_region; (var_t fid) $ no_region ] in
     let symbols = [ Term "I32"; NT v ] in
-    symbols #@ id
+    symbols |> case_v |> Value.make_val id
   | I64 op ->
+    let open Common.Source in
     let v = f1 op in
-    let (id, _, _) = flatten_case_v v in
+    let iid = id_of_case_v v in
+    let fid = rename_i_to_f iid in
+    let id = var_t' "op" [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t fid) $ no_region; (var_t fid) $ no_region ] in
     let symbols = [ Term "I64"; NT v ] in
-    symbols #@ id
+    symbols |> case_v |> Value.make_val id
   | F32 op ->
+    let open Common.Source in
     let v = f2 op in
-    let (id, _, _) = flatten_case_v v in
+    let fid = id_of_case_v v in
+    let iid = rename_f_to_i fid in
+    let id = var_t' "op" [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t fid) $ no_region; (var_t fid) $ no_region ] in
     let symbols = [ Term "F32"; NT v ] in
-    symbols #@ id
+    symbols |> case_v |> Value.make_val id
   | F64 op ->
+    let open Common.Source in
     let v = f2 op in
-    let (id, _, _) = flatten_case_v v in
+    let fid = id_of_case_v v in
+    let iid = rename_f_to_i fid in
+    let id = var_t' "op" [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t fid) $ no_region; (var_t fid) $ no_region ] in
     let symbols = [ Term "F64"; NT v ] in
-    symbols #@ id
+    symbols |> case_v |> Value.make_val id
+
+let il_of_int_unop = function
+  | IntOp.Clz -> [ Term "Clz" ] #@ "iunop"
+  | IntOp.Ctz -> [ Term "Ctz" ] #@ "iunop"
+  | IntOp.Popcnt -> [ Term "Popcnt" ] #@ "iunop"
+  | IntOp.ExtendS pt -> [ Term "ExtendS"; NT (il_of_pack_type pt) ] #@ "iunop"
+
+let il_of_float_unop = function
+  | FloatOp.Neg -> [ Term "Neg" ] #@ "funop"
+  | FloatOp.Abs -> [ Term "Abs" ] #@ "funop"
+  | FloatOp.Ceil -> [ Term "Ceil" ] #@ "funop"
+  | FloatOp.Floor -> [ Term "Floor" ] #@ "funop"
+  | FloatOp.Trunc -> [ Term "Trunc" ] #@ "funop"
+  | FloatOp.Nearest -> [ Term "Nearest" ] #@ "funop"
+  | FloatOp.Sqrt -> [ Term "Sqrt" ] #@ "funop"
+
+let il_of_unop = il_of_op il_of_int_unop il_of_float_unop
 
 let il_of_int_binop ibinop =
   [ Term (string_of_int_binop ibinop) ] #@ "ibinop"
@@ -279,14 +364,311 @@ let il_of_float_binop fbinop =
 
 let il_of_binop = il_of_op il_of_int_binop il_of_float_binop
 
+let il_of_int_testop : IntOp.testop -> Value.t = function
+  | IntOp.Eqz -> [ Term "Eqz" ] #@ "itestop"
+
+let il_of_float_testop : FloatOp.testop -> Value.t = function
+  | _ -> .
+
+let il_of_testop = il_of_op il_of_int_testop il_of_float_testop
+
+let il_of_int_relop = function
+  | IntOp.Eq -> [ Term "Eq" ] #@ "irelop"
+  | IntOp.Ne -> [ Term "Ne" ] #@ "irelop"
+  | IntOp.LtS -> [ Term "LtS" ] #@ "irelop"
+  | IntOp.LtU -> [ Term "LtU" ] #@ "irelop"
+  | IntOp.GtS -> [ Term "GtS" ] #@ "irelop"
+  | IntOp.GtU -> [ Term "GtU" ] #@ "irelop"
+  | IntOp.LeS -> [ Term "LeS" ] #@ "irelop"
+  | IntOp.LeU -> [ Term "LeU" ] #@ "irelop"
+  | IntOp.GeS -> [ Term "GeS" ] #@ "irelop"
+  | IntOp.GeU -> [ Term "GeU" ] #@ "irelop"
+
+let il_of_float_relop = function
+  | FloatOp.Eq -> [ Term "Eq" ] #@ "frelop"
+  | FloatOp.Ne -> [ Term "Ne" ] #@ "frelop"
+  | FloatOp.Lt -> [ Term "Lt" ] #@ "frelop"
+  | FloatOp.Gt -> [ Term "Gt" ] #@ "frelop"
+  | FloatOp.Le -> [ Term "Le" ] #@ "frelop"
+  | FloatOp.Ge -> [ Term "Ge" ] #@ "frelop"
+
+let il_of_relop = il_of_op il_of_int_relop il_of_float_relop
+
+let il_of_int_cvtop = function
+  | IntOp.ExtendSI32 -> [ Term "ExtendSI32" ] #@ "icvtop"
+  | IntOp.ExtendUI32 -> [ Term "ExtendUI32" ] #@ "icvtop"
+  | IntOp.WrapI64 -> [ Term "WrapI64" ] #@ "icvtop"
+  | IntOp.TruncSF32 -> [ Term "TruncSF32" ] #@ "icvtop"
+  | IntOp.TruncUF32 -> [ Term "TruncUF32" ] #@ "icvtop"
+  | IntOp.TruncSF64 -> [ Term "TruncSF64" ] #@ "icvtop"
+  | IntOp.TruncUF64 -> [ Term "TruncUF64" ] #@ "icvtop"
+  | IntOp.TruncSatSF32 -> [ Term "TruncSatSF32" ] #@ "icvtop"
+  | IntOp.TruncSatUF32 -> [ Term "TruncSatUF32" ] #@ "icvtop"
+  | IntOp.TruncSatSF64 -> [ Term "TruncSatSF64" ] #@ "icvtop"
+  | IntOp.TruncSatUF64 -> [ Term "TruncSatUF64" ] #@ "icvtop"
+  | IntOp.ReinterpretFloat -> [ Term "ReinterpretFloat" ] #@ "icvtop"
+
+let il_of_float_cvtop = function
+  | FloatOp.ConvertSI32 -> [ Term "ConvertSI32" ] #@ "fcvtop"
+  | FloatOp.ConvertUI32 -> [ Term "ConvertUI32" ] #@ "fcvtop"
+  | FloatOp.ConvertSI64 -> [ Term "ConvertSI64" ] #@ "fcvtop"
+  | FloatOp.ConvertUI64 -> [ Term "ConvertUI64" ] #@ "fcvtop"
+  | FloatOp.PromoteF32 -> [ Term "PromoteF32" ] #@ "fcvtop"
+  | FloatOp.DemoteF64 -> [ Term "DemoteF64" ] #@ "fcvtop"
+  | FloatOp.ReinterpretInt -> [ Term "ReinterpretInt" ] #@ "fcvtop"
+
+let il_of_cvtop = il_of_op il_of_int_cvtop il_of_float_cvtop
+
+let il_of_num = function
+  | I32 i32 -> [ Term "I32"; NT (Value.nat (bigint_of_nat32 i32)) ] #@ "num_"
+  | I64 i64 -> [ Term "I64"; NT (Value.nat (bigint_of_nat64 i64)) ] #@ "num_"
+  | F32 f32 -> [ Term "F32"; NT (il_of_float32 f32) ] #@ "num_"
+  | F64 f64 -> [ Term "F64"; NT (il_of_float64 f64) ] #@ "num_"
+
+let vec_rename_i_to_f s =
+  if String.length s > 0 && s.[1] = 'i' then
+    "vf" ^ String.sub s 2 (String.length s - 2)
+  else
+    s
+
+let vec_op_name s =
+  if String.length s > 0 then
+    "v" ^ String.sub s 2 (String.length s - 2)
+  else
+    s
+
+let il_of_vop ?(vflag=false) f1 f2 = function
+  | V128 vop -> (
+    let open Common.Source in
+    match vop with
+    | V128.I8x16 op ->
+      let v = f1 op in
+      let iid = id_of_case_v v in
+      let ftarg = if vflag then (var_t "void") $ no_region else (var_t (vec_rename_i_to_f iid)) $ no_region in
+      let opname = vec_op_name iid in
+      let id = var_t' opname [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; ftarg; ftarg ] in
+      let v2 = [ Term "I8x16"; NT v ]  |> case_v |> Value.make_val id in
+      [ Term "V128"; NT v2 ] #@ (opname ^ "_")
+    | V128.I16x8 op ->
+      let v = f1 op in
+      let iid = id_of_case_v v in
+      let ftarg = if vflag then (var_t "void") $ no_region else (var_t (vec_rename_i_to_f iid)) $ no_region in
+      let opname = vec_op_name iid in
+      let id = var_t' opname [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; ftarg; ftarg ] in
+      let v2 = [ Term "I16x8"; NT v ]  |> case_v |> Value.make_val id in
+      [ Term "V128"; NT v2 ] #@ (opname ^ "_")
+    | V128.I32x4 op ->
+      let v = f1 op in
+      let iid = id_of_case_v v in
+      let ftarg = if vflag then (var_t "void") $ no_region else (var_t (vec_rename_i_to_f iid)) $ no_region in
+      let opname = vec_op_name iid in
+      let id = var_t' opname [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; ftarg; ftarg ] in
+      let v2 = [ Term "I32x4"; NT v ]  |> case_v |> Value.make_val id in
+      [ Term "V128"; NT v2 ] #@ (opname ^ "_")
+    | V128.I64x2 op ->
+      let v = f1 op in
+      let iid = id_of_case_v v in
+      let ftarg = if vflag then (var_t "void") $ no_region else (var_t (vec_rename_i_to_f iid)) $ no_region in
+      let opname = vec_op_name iid in
+      let id = var_t' opname [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; ftarg; ftarg ] in
+      let v2 = [ Term "I64x2"; NT v ]  |> case_v |> Value.make_val id in
+      [ Term "V128"; NT v2 ] #@ (opname ^ "_")
+    | V128.F32x4 op ->
+      let v = f2 op in
+      let iid = id_of_case_v v in
+      let ftarg = if vflag then (var_t "void") $ no_region else (var_t (vec_rename_i_to_f iid)) $ no_region in
+      let opname = vec_op_name iid in
+      let id = var_t' opname [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; ftarg; ftarg ] in
+      let v2 = [ Term "F32x4"; NT v ]  |> case_v |> Value.make_val id in
+      [ Term "V128"; NT v2 ] #@ (opname ^ "_")
+    | V128.F64x2 op ->
+      let v = f2 op in
+      let iid = id_of_case_v v in
+      let ftarg = if vflag then (var_t "void") $ no_region else (var_t (vec_rename_i_to_f iid)) $ no_region in
+      let opname = vec_op_name iid in
+      let id = var_t' opname [ (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; (var_t iid) $ no_region; ftarg; ftarg ] in
+      let v2 = [ Term "F64x2"; NT v ]  |> case_v |> Value.make_val id in
+      [ Term "V128"; NT v2 ] #@ (opname ^ "_")
+  )
+
+let il_of_int_vtestop : V128Op.itestop -> Value.t = function
+  | V128Op.AllTrue -> [ Term "AllTrue" ] #@ "vitestop"
+
+let il_of_float_vtestop : Ast.void -> Value.t = function
+  | _ -> .
+
+let il_of_vtestop = il_of_vop il_of_int_vtestop il_of_float_vtestop
+
+let il_of_int_vrelop : V128Op.irelop -> Value.t = function
+  | V128Op.Eq -> [ Term "Eq" ] #@ "virelop"
+  | V128Op.Ne ->  [ Term "Ne" ] #@ "virelop"
+  | V128Op.LtS -> [ Term "LtS" ] #@ "virelop"
+  | V128Op.LtU -> [ Term "LtU" ] #@ "virelop"
+  | V128Op.LeS -> [ Term "LeS" ] #@ "virelop"
+  | V128Op.LeU -> [ Term "LeU" ] #@ "virelop"
+  | V128Op.GtS -> [ Term "GtS" ] #@ "virelop"
+  | V128Op.GtU -> [ Term "GtU" ] #@ "virelop"
+  | V128Op.GeS -> [ Term "GeS" ] #@ "virelop"
+  | V128Op.GeU -> [ Term "GeU" ] #@ "virelop"
+
+let il_of_float_vrelop : V128Op.frelop -> Value.t = function
+  | V128Op.Eq -> [ Term "Eq" ] #@ "vfrelop"
+  | V128Op.Ne -> [ Term "Ne" ] #@ "vfrelop"
+  | V128Op.Lt -> [ Term "Lt" ] #@ "vfrelop"
+  | V128Op.Le -> [ Term "Le" ] #@ "vfrelop"
+  | V128Op.Gt -> [ Term "Gt" ] #@ "vfrelop"
+  | V128Op.Ge -> [ Term "Ge" ] #@ "vfrelop"
+
+let il_of_vrelop = il_of_vop il_of_int_vrelop il_of_float_vrelop
+
+let il_of_vec = function
+  | V128 v128 ->
+    let symbols = [ Term "V128"; NT (il_of_vec128 v128) ] in
+    symbols #@ "vec_"
+
+let il_of_int_vunop : V128Op.iunop -> Value.t = function
+  | V128Op.Abs -> [ Term "Abs" ] #@ "viunop"
+  | V128Op.Neg -> [ Term "Neg" ] #@ "viunop"
+  | V128Op.Popcnt -> [ Term "Popcnt" ] #@ "viunop"
+
+let il_of_float_vunop : V128Op.funop -> Value.t = function
+  | V128Op.Abs -> [ Term "Abs" ] #@ "vfunop"
+  | V128Op.Neg -> [ Term "Neg" ] #@ "vfunop"
+  | V128Op.Sqrt -> [ Term "Sqrt" ] #@ "vfunop"
+  | V128Op.Ceil -> [ Term "Ceil" ] #@ "vfunop"
+  | V128Op.Floor -> [ Term "Floor" ] #@ "vfunop"
+  | V128Op.Trunc -> [ Term "Trunc" ] #@ "vfunop"
+  | V128Op.Nearest -> [ Term "Nearest" ] #@ "vfunop"
+
+let il_of_vunop = il_of_vop il_of_int_vunop il_of_float_vunop
+
+let il_of_int_vbinop : V128Op.ibinop -> Value.t = function
+  | V128Op.Add -> [ Term "Add" ] #@ "vibinop"
+  | V128Op.Sub -> [ Term "Sub" ] #@ "vibinop"
+  | V128Op.Mul -> [ Term "Mul" ] #@ "vibinop"
+  | V128Op.MinS -> [ Term "MinS" ] #@ "vibinop"
+  | V128Op.MinU -> [ Term "MinU" ] #@ "vibinop"
+  | V128Op.MaxS -> [ Term "MaxS" ] #@ "vibinop"
+  | V128Op.MaxU -> [ Term "MaxU" ] #@ "vibinop"
+  | V128Op.AvgrU -> [ Term "AvgrU" ] #@ "vibinop"
+  | V128Op.AddSatS -> [ Term "AddSatS" ] #@ "vibinop"
+  | V128Op.AddSatU -> [ Term "AddSatU" ] #@ "vibinop"
+  | V128Op.SubSatS -> [ Term "SubSatS" ] #@ "vibinop"
+  | V128Op.SubSatU -> [ Term "SubSatU" ] #@ "vibinop"
+  | V128Op.DotS -> [ Term "DotS" ] #@ "vibinop"
+  | V128Op.Q15MulRSatS -> [ Term "Q15MulRSatS" ] #@ "vibinop"
+  | V128Op.ExtMulLowS -> [ Term "ExtMulLowS" ] #@ "vibinop"
+  | V128Op.ExtMulHighS -> [ Term "ExtMulHighS" ] #@ "vibinop"
+  | V128Op.ExtMulLowU -> [ Term "ExtMulLowU" ] #@ "vibinop"
+  | V128Op.ExtMulHighU -> [ Term "ExtMulHighU" ] #@ "vibinop"
+  | V128Op.Swizzle -> [ Term "Swizzle" ] #@ "vibinop"
+  | V128Op.Shuffle l ->
+    let intv_list = List.map (fun i -> Value.nat (bigint_of_nat i)) l in
+    let symbols = [ Term "Shuffle"; NT (Make.list (Il.Typ.nat) intv_list) ] in
+    symbols #@ "vibinop"
+  | V128Op.NarrowS -> [ Term "NarrowS" ] #@ "vibinop"
+  | V128Op.NarrowU -> [ Term "NarrowU" ] #@ "vibinop"
+  | V128Op.RelaxedSwizzle -> [ Term "RelaxedSwizzle" ] #@ "vibinop"
+  | V128Op.RelaxedQ15MulRS ->  [ Term "RelaxedQ15MulRS" ] #@ "vibinop"
+  | V128Op.RelaxedDot -> [ Term "RelaxedDot" ] #@ "vibinop"
+
+let il_of_float_vbinop : V128Op.fbinop -> Value.t = function
+  | V128Op.Add -> [ Term "Add" ] #@ "vfbinop"
+  | V128Op.Sub -> [ Term "Sub" ] #@ "vfbinop"
+  | V128Op.Mul -> [ Term "Mul" ] #@ "vfbinop"
+  | V128Op.Div -> [ Term "Div" ] #@ "vfbinop"
+  | V128Op.Min -> [ Term "Min" ] #@ "vfbinop"
+  | V128Op.Max -> [ Term "Max" ] #@ "vfbinop"
+  | V128Op.Pmin -> [ Term "Pmin" ] #@ "vfbinop"
+  | V128Op.Pmax -> [ Term "Pmax" ] #@ "vfbinop"
+  | V128Op.RelaxedMin -> [ Term "RelaxedMin" ] #@ "vfbinop"
+  | V128Op.RelaxedMax -> [ Term "RelaxedMax" ] #@ "vfbinop"
+
+let il_of_vbinop = il_of_vop il_of_int_vbinop il_of_float_vbinop
+
 let il_of_instr instr =
   match instr.it with
+  | LocalGet idx ->
+    let symbols = [ Term "LOCAL.GET"; NT (il_of_idx "localidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | LocalSet idx ->
+    let symbols = [ Term "LOCAL.SET"; NT (il_of_idx "localidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | LocalTee idx ->
+    let symbols = [ Term "LOCAL.TEE"; NT (il_of_idx "localidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | GlobalGet idx ->
+    let symbols = [ Term "GLOBAL.GET"; NT (il_of_idx "globalidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | GlobalSet idx ->
+    let symbols = [ Term "GLOBAL.SET"; NT (il_of_idx "globalidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | TableGet idx ->
+    let symbols = [ Term "TABLE.GET"; NT (il_of_idx "tableidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | TableSet idx ->
+    let symbols = [ Term "TABLE.SET"; NT (il_of_idx "tableidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | TableSize idx ->
+    let symbols = [ Term "TABLE.SIZE"; NT (il_of_idx "tableidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | TableGrow idx ->
+    let symbols = [ Term "TABLE.GROW"; NT (il_of_idx "tableidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | TableFill idx ->
+    let symbols = [ Term "TABLE.FILL"; NT (il_of_idx "tableidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | TableCopy (idx1, idx2) ->
+    let symbols = [ Term "TABLE.COPY"; NT (il_of_idx "tableidx" (idx1.it $ no_region)); NT (il_of_idx "tableidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | TableInit (idx1, idx2) ->
+    let symbols = [ Term "TABLE.INIT"; NT (il_of_idx "tableidx" (idx1.it $ no_region)); NT (il_of_idx "elemidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | Const num ->
+    let symbols = [ Term "CONST"; NT (il_of_num num.it) ] in
+    symbols #@ "instr"
+  | Test op ->
+    let symbols = [ Term "TEST"; NT (il_of_testop op) ] in
+    symbols #@ "instr"
+  | Compare op ->
+    let symbols = [ Term "COMPARE"; NT (il_of_relop op) ] in
+    symbols #@ "instr"
+  | Unary op ->
+    let symbols = [ Term "UNARY"; NT (il_of_unop op) ] in
+    symbols #@ "instr"
   | Binary op ->
     let symbols = [ Term "BINOP"; NT (il_of_binop op) ] in
     symbols #@ "instr"
-  | LocalGet idx ->
-    let symbols = [ Term "LOCAL.GET"; NT (il_of_idx "localidx" idx) ] in
+  | Convert op ->
+    let symbols = [ Term "CONVERT"; NT (il_of_cvtop op) ] in
     symbols #@ "instr"
+  | VecConst vec ->
+    let symbols = [ Term "VEC.CONST"; NT (il_of_vec vec.it) ] in
+    symbols #@ "instr"
+  | VecTest vop ->
+    let symbols = [ Term "VEC.TEST"; NT (il_of_vtestop vop) ] in
+    symbols #@ "instr"
+  | VecUnary vop ->
+    let symbols = [ Term "VEC.UNARY"; NT (il_of_vunop vop) ] in
+    symbols #@ "instr"
+  | VecBinary vop ->
+    let symbols = [ Term "VEC.BINARY"; NT (il_of_vbinop vop) ] in
+    symbols #@ "instr"
+  | VecCompare vop ->
+    let symbols = [ Term "VEC.COMPARE"; NT (il_of_vrelop vop) ] in
+    symbols #@ "instr"
+  (*
+  | VecConvert vop ->
+  | VecTernary vop ->
+  | VecShift vop ->
+  | VecBitmask vop ->
+  | VecTestBits vop ->
+  | VecUnaryBits vop ->
+  | VecBinaryBits vop ->
+  | VecTernaryBits vop ->
+  | VecSplat vop ->
+  | VecExtract vop ->
+  | VecReplace vop -> *)
   | _ -> failwith "il_of_instr: not implemented yet"
 
 let il_of_const const =
