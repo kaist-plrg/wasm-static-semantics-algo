@@ -3,4 +3,4 @@
 (library
  (name targets_wasm)
  (public_name spectec.targets.wasm)
- (libraries spectec.runner spectec.lang wasm_interpreter))
+ (libraries spectec.runner spectec.lang wasm_interpreter str))

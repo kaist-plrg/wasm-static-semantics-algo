@@ -107,9 +107,10 @@ let p4_command =
     ]
 
 let wasm_command =
+  let tasks = [ Wasm_Cmd.Pack (module Targets_wasm.Wasm.Typecheck) ] in
   Core.Command.group ~summary:"Wasm commands"
     [
-      ("typecheck", Wasm_.Wasm.command);
+      ("typecheck", Wasm_.Wasm.command); ("coverage", Wasm_Cmd.make_coverage tasks);
     ]
 
 let command =
