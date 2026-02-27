@@ -64,6 +64,19 @@ let rec assign_exp (ctx : Ctx.t) (exp : exp) (value : value) : Ctx.t =
           in
           Ctx.add_value Local ctx (id, iters @ [ Opt ]) value_sub)
         ctx vars
+  | IterE (exp, (Opt, vars)), _ ->
+      (* Assign the value to the iterated expression *)
+      let ctx = assign_exp ctx exp value in
+      (* Per iterated variable, make an option out of the value *)
+      List.fold_left
+        (fun ctx (id, typ, iters) ->
+          let value_sub =
+            let value = Ctx.find_value Local ctx (id, iters) in
+            let typ = Lang.Il.Typ.iterate typ (iters @ [ Opt ]) in
+            Some value |> Value.Make.opt typ.it
+          in
+          Ctx.add_value Local ctx (id, iters @ [ Opt ]) value_sub)
+        ctx vars
   | IterE (exp, (List, vars)), ListV values ->
       (* Map over the value list elements,
          and assign each value to the iterated expression *)
