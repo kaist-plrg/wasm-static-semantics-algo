@@ -39,7 +39,7 @@ syntax laneop<A,B,C,D,E,F> =
   | I8x16 A | I16x8 B | I32x4 C | I64x2 D
   | F32x4 E | F64x2 F
 
-syntax v128 = text
+syntax v128 = nat
 syntax vec_ = vecop<v128>
 var vec : vec_
 

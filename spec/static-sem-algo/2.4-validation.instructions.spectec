@@ -120,9 +120,6 @@ rule Instr_ok/br_on_cast_fail:
   -- if t_l = C_0.LABELS[i-1]
   -- if $match_valtype(C_0.TYPES, RefT rt_1', t_l)
 
-rule Instr_ok/return:
-  C_0 irt |- RETURN : ({INS (Ellipses, C_0.RESULTS), OUTS (Ellipses, eps)}, eps)
-
 rule Instr_ok/call:
   C_0 irt |- CALL x : ({INS (NoEllipses, t_1*), OUTS (NoEllipses, t_2*)}, eps)
   -- if FuncT t_1* t_2* = $functype_of_strtype($expanddt(C_0.FUNCS[x]))
@@ -136,6 +133,9 @@ rule Instr_ok/call_indirect:
   -- if TableT at lim rt = C_0.TABLES[x]
   -- if FuncT t_1* t_2* = $func_type(C_0, y)
   -- if $match_reftype(C_0.TYPES, rt, (Null FuncHT))
+
+rule Instr_ok/return:
+  C_0 irt |- RETURN : ({INS (Ellipses, C_0.RESULTS), OUTS (Ellipses, eps)}, eps)
 
 rule Instr_ok/return_call:
   C_0 irt |- RETURN_CALL x : ({INS (Ellipses, t_1*), OUTS (Ellipses, eps)}, eps)

@@ -71,14 +71,12 @@ rule Globaltype_ok:
   -- Valtype_ok: C_0 |- t : OK
 
 rule Limits_ok/without-max:
-  C_0 range |- { MIN u64, MAX eps } : OK
-  -- if $(u64 <= range)
+  C_0 range |- { MIN i64, MAX eps } : OK
+  -- if $le_u(i64, range)
 
 rule Limits_ok/with-max:
-  C_0 range |- { MIN u64, MAX u64' } : OK
-  -- if $(u64 <= range) /\
-        $(u64' <= range) /\
-        $(u64 <= u64')
+  C_0 range |- { MIN i64, MAX i64' } : OK
+  -- if $le_u(i64, range) /\ $le_u(i64', range) /\ $le_u(i64, i64')
 
 rule Tabletype_ok/i32:
   C_0 |- TableT I32AT lim rt : OK
@@ -88,7 +86,7 @@ rule Tabletype_ok/i32:
 rule Tabletype_ok/i64:
   C_0 |- TableT I64AT lim rt : OK
   -- Reftype_ok: C_0 |- rt : OK
-  -- Limits_ok: C_0 $(-1) |- lim : OK
+  -- Limits_ok: C_0 $(18446744073709551615) |- lim : OK
 
 rule Memtype_ok/i32:
   C_0 |- MemoryT I32AT lim : OK
