@@ -69,7 +69,7 @@ let il_of_fmagN layout i =
 let il_of_floatN layout i =
   let i' = Z.logand i (mask_mag layout) in
   let symbols = [ if i' = i then Term "POS" else Term "NEG"; NT (il_of_fmagN layout i) ] in
-  symbols #@ "f32"
+  if layout.width = 32 then symbols #@ "f32" else symbols #@ "f64"
 
 let e64 = Z.(shift_left one 64)
 
@@ -209,7 +209,10 @@ and il_of_pack_type = function
     [ Term "I8" ] #@ "packtype"
   | Pack.Pack16 ->
     [ Term "I16" ] #@ "packtype"
-  | _ -> failwith "invalid pack type"
+  | Pack.Pack32 ->
+    [ Term "I32" ] #@ "packtype"
+  | Pack.Pack64 ->
+    [ Term "I64" ] #@ "packtype"
 
 and il_of_storage_type = function
   | ValStorageT vt ->
@@ -274,23 +277,20 @@ and il_of_addr_type = function
   | I64AT ->
     [ Term "I64AT" ] #@ "addrtype"
 
-and il_of_limits default limits =
-  let max =
-    match limits.max with
-    | Some v -> Value.nat (bigint_of_nat64 v)
-    | None -> Value.nat (bigint_of_nat64 default) in
+and il_of_limits limits =
   Make.record (var_t "limits") [
-    (wrap_atom "MIN", Value.nat (bigint_of_nat64 limits.min));
-    (wrap_atom "MAX", max) ]
+    (wrap_atom "MIN", Make.int (var_t "i64") (bigint_of_z_int (Z.of_int64_unsigned limits.min)));
+    (wrap_atom "MAX", Option.map (fun i -> Make.int (var_t "i64") (bigint_of_z_int (Z.of_int64_unsigned i))) limits.max |> Make.opt (iter_t Opt (var_t "i64")))
+  ]
 
 and il_of_table_type = function
   | TableT (at, limits, rt) ->
-    let symbols = [ Term "TableT"; NT (il_of_addr_type at); NT (il_of_limits default_table_max limits); NT (il_of_ref_type rt) ] in
+    let symbols = [ Term "TableT"; NT (il_of_addr_type at); NT (il_of_limits limits); NT (il_of_ref_type rt) ] in
     symbols #@ "tabletype"
 
 and il_of_memory_type = function
   | MemoryT (at, limits) ->
-    let symbols = [ Term "MemoryT"; NT (il_of_addr_type at); NT (il_of_limits default_memory_max limits) ] in
+    let symbols = [ Term "MemoryT"; NT (il_of_addr_type at); NT (il_of_limits limits) ] in
     symbols #@ "memtype"
 
 let rename_i_to_f s =
@@ -586,8 +586,325 @@ let il_of_float_vbinop : V128Op.fbinop -> Value.t = function
 
 let il_of_vbinop = il_of_vop il_of_int_vbinop il_of_float_vbinop
 
-let il_of_instr instr =
+let il_of_int i =
+  Value.int (bigint_of_z_int (Z.of_int i))
+
+let il_of_int64 i64 =
+  Value.int (bigint_of_z_int (Z.of_int64_unsigned i64))
+
+let il_of_void () =
+  Make.record (var_t "void") []
+
+let il_of_extension = function
+  | Pack.SX -> [ Term "SX" ] #@ "extension"
+  | Pack.ZX -> [ Term "ZX" ] #@ "extension"
+
+let il_of_pack_shape = function
+  | Pack.Pack8x8 -> [ Term "Pack8x8" ] #@ "packshape"
+  | Pack.Pack16x4 -> [ Term "Pack16x4" ] #@ "packshape"
+  | Pack.Pack32x2 -> [ Term "Pack32x2" ] #@ "packshape"
+
+let il_of_vec_extension = function
+  | Pack.ExtLane (shape, ext) ->
+    let symbols = [ Term "ExtLane"; NT (il_of_pack_shape shape); NT (il_of_extension ext) ] in
+    symbols #@ "vextension"
+  | Pack.ExtSplat ->
+    [ Term "ExtSplat" ] #@ "vextension"
+  | Pack.ExtZero ->
+    [ Term "ExtZero" ] #@ "vextension"
+
+let il_of_initop = function
+  | Explicit -> [ Term "Explicit" ] #@ "initop_"
+  | Implicit -> [ Term "Implicit" ] #@ "initop_"
+
+let il_of_externop = function
+  | Internalize -> [ Term "Internalize" ] #@ "externop_"
+  | Externalize -> [ Term "Externalize" ] #@ "externop_"
+
+let il_of_block_type = function
+  | VarBlockType idx ->
+    let symbols = [ Term "VarBlockType"; NT (il_of_idx "typeidx" (idx.it $ no_region)) ] in
+    symbols #@ "blocktype"
+  | ValBlockType vt_opt ->
+    let symbols = [ Term "ValBlockType"; NT (il_of_opt "valtype" il_of_val_type vt_opt) ] in
+    symbols #@ "blocktype"
+
+let il_of_catch catch =
+  match catch.it with
+  | Catch (idx1, idx2) ->
+    let symbols = [ Term "Catch"; NT (il_of_idx "tagidx" (idx1.it $ no_region)); NT (il_of_idx "labelidx" (idx2.it $ no_region)) ] in
+    symbols #@ "catch"
+  | CatchRef (idx1, idx2) ->
+    let symbols = [ Term "CatchRef"; NT (il_of_idx "tagidx" (idx1.it $ no_region)); NT (il_of_idx "labelidx" (idx2.it $ no_region)) ] in
+    symbols #@ "catch"
+  | CatchAll idx ->
+    let symbols = [ Term "CatchAll"; NT (il_of_idx "labelidx" (idx.it $ no_region)) ] in
+    symbols #@ "catch"
+  | CatchAllRef idx ->
+    let symbols = [ Term "CatchAllRef"; NT (il_of_idx "labelidx" (idx.it $ no_region)) ] in
+    symbols #@ "catch"
+
+let il_of_pack_type_memop = function
+  | Pack.Pack8 -> [ Term "I8" ] #@ "packtype"
+  | Pack.Pack16 -> [ Term "I16" ] #@ "packtype"
+  | Pack.Pack32 -> [ Term "I32" ] #@ "packtype"
+  | Pack.Pack64 -> [ Term "I64" ] #@ "packtype"
+
+let il_of_loadop op =
+  let default_pack = Value.tuple [ il_of_pack_type_memop Pack.Pack8; il_of_extension Pack.SX ] in
+  let pack =
+    match op.pack with
+    | Some (pack, ext) ->
+      let tuple = Value.tuple [ il_of_pack_type_memop pack; il_of_extension ext ] in
+      Make.opt (iter_t Opt tuple.note.typ) (Some tuple)
+    | None ->
+      Make.opt (iter_t Opt default_pack.note.typ) None
+  in
+  Make.record (var_t "loadop_") [
+    (wrap_atom "TYPE", il_of_num_type op.ty);
+    (wrap_atom "ALIGN", il_of_int op.align);
+    (wrap_atom "OFFSET", il_of_int64 op.offset);
+    (wrap_atom "PACK", pack); ]
+
+let il_of_storeop op =
+  let pack = il_of_opt "packtype" il_of_pack_type_memop op.pack in
+  Make.record (var_t "storeop_") [
+    (wrap_atom "TYPE", il_of_num_type op.ty);
+    (wrap_atom "ALIGN", il_of_int op.align);
+    (wrap_atom "OFFSET", il_of_int64 op.offset);
+    (wrap_atom "PACK", pack); ]
+
+let il_of_vec_loadop op =
+  let default_pack = Value.tuple [ il_of_pack_type_memop Pack.Pack8; il_of_vec_extension Pack.ExtSplat ] in
+  let pack =
+    match op.pack with
+    | Some (pack, ext) ->
+      let tuple = Value.tuple [ il_of_pack_type_memop pack; il_of_vec_extension ext ] in
+      Make.opt (iter_t Opt tuple.note.typ) (Some tuple)
+    | None ->
+      Make.opt (iter_t Opt default_pack.note.typ) None
+  in
+  Make.record (var_t "vloadop_") [
+    (wrap_atom "TYPE", il_of_vec_type op.ty);
+    (wrap_atom "ALIGN", il_of_int op.align);
+    (wrap_atom "OFFSET", il_of_int64 op.offset);
+    (wrap_atom "PACK", pack); ]
+
+let il_of_vec_storeop op =
+  Make.record (var_t "vstoreop_") [
+    (wrap_atom "TYPE", il_of_vec_type op.ty);
+    (wrap_atom "ALIGN", il_of_int op.align);
+    (wrap_atom "OFFSET", il_of_int64 op.offset);
+    (wrap_atom "PACK", il_of_void ()); ]
+
+let il_of_vec_laneop op =
+  Make.record (var_t "vlaneop_") [
+    (wrap_atom "TYPE", il_of_vec_type op.ty);
+    (wrap_atom "ALIGN", il_of_int op.align);
+    (wrap_atom "OFFSET", il_of_int64 op.offset);
+    (wrap_atom "PACK", il_of_pack_type_memop op.pack); ]
+
+let il_of_int_vternop : V128Op.iternop -> Value.t = function
+  | V128Op.RelaxedLaneselect -> [ Term "RelaxedLaneselect" ] #@ "viternop"
+  | V128Op.RelaxedDotAdd -> [ Term "RelaxedDotAdd" ] #@ "viternop"
+
+let il_of_float_vternop : V128Op.fternop -> Value.t = function
+  | V128Op.RelaxedMadd -> [ Term "RelaxedMadd" ] #@ "vfternop"
+  | V128Op.RelaxedNmadd -> [ Term "RelaxedNmadd" ] #@ "vfternop"
+
+let il_of_vternop = il_of_vop il_of_int_vternop il_of_float_vternop
+
+let il_of_int_vcvtop : V128Op.icvtop -> Value.t = function
+  | V128Op.ExtendLowS -> [ Term "ExtendLowS" ] #@ "vicvtop"
+  | V128Op.ExtendLowU -> [ Term "ExtendLowU" ] #@ "vicvtop"
+  | V128Op.ExtendHighS -> [ Term "ExtendHighS" ] #@ "vicvtop"
+  | V128Op.ExtendHighU -> [ Term "ExtendHighU" ] #@ "vicvtop"
+  | V128Op.ExtAddPairwiseS -> [ Term "ExtAddPairwiseS" ] #@ "vicvtop"
+  | V128Op.ExtAddPairwiseU -> [ Term "ExtAddPairwiseU" ] #@ "vicvtop"
+  | V128Op.TruncSatSF32x4 -> [ Term "TruncSatSF32x4" ] #@ "vicvtop"
+  | V128Op.TruncSatUF32x4 -> [ Term "TruncSatUF32x4" ] #@ "vicvtop"
+  | V128Op.TruncSatSZeroF64x2 -> [ Term "TruncSatSZeroF64x2" ] #@ "vicvtop"
+  | V128Op.TruncSatUZeroF64x2 -> [ Term "TruncSatUZeroF64x2" ] #@ "vicvtop"
+  | V128Op.RelaxedTruncSF32x4 -> [ Term "RelaxedTruncSF32x4" ] #@ "vicvtop"
+  | V128Op.RelaxedTruncUF32x4 -> [ Term "RelaxedTruncUF32x4" ] #@ "vicvtop"
+  | V128Op.RelaxedTruncSZeroF64x2 -> [ Term "RelaxedTruncSZeroF64x2" ] #@ "vicvtop"
+  | V128Op.RelaxedTruncUZeroF64x2 -> [ Term "RelaxedTruncUZeroF64x2" ] #@ "vicvtop"
+
+let il_of_float_vcvtop : V128Op.fcvtop -> Value.t = function
+  | V128Op.DemoteZeroF64x2 -> [ Term "DemoteZeroF64x2" ] #@ "vfcvtop"
+  | V128Op.PromoteLowF32x4 -> [ Term "PromoteLowF32x4" ] #@ "vfcvtop"
+  | V128Op.ConvertSI32x4 -> [ Term "ConvertSI32x4" ] #@ "vfcvtop"
+  | V128Op.ConvertUI32x4 -> [ Term "ConvertUI32x4" ] #@ "vfcvtop"
+
+let il_of_vcvtop = il_of_vop il_of_int_vcvtop il_of_float_vcvtop
+
+let il_of_int_vshiftop : V128Op.ishiftop -> Value.t = function
+  | V128Op.Shl -> [ Term "Shl" ] #@ "vishiftop"
+  | V128Op.ShrS -> [ Term "ShrS" ] #@ "vishiftop"
+  | V128Op.ShrU -> [ Term "ShrU" ] #@ "vishiftop"
+
+let il_of_float_vshiftop : Ast.void -> Value.t = function
+  | _ -> .
+
+let il_of_vshiftop = il_of_vop ~vflag:true il_of_int_vshiftop il_of_float_vshiftop
+
+let il_of_int_vbitmaskop : V128Op.ibitmaskop -> Value.t = function
+  | V128Op.Bitmask -> [ Term "Bitmask" ] #@ "vibitmaskop"
+
+let il_of_float_vbitmaskop : Ast.void -> Value.t = function
+  | _ -> .
+
+let il_of_vbitmaskop = il_of_vop ~vflag:true il_of_int_vbitmaskop il_of_float_vbitmaskop
+
+let il_of_vvtestop = function
+  | V128 V128Op.AnyTrue ->
+    let symbols = [ Term "V128"; NT ([ Term "AnyTrue" ] #@ "vvtestop") ] in
+    symbols #@ "vvtestop_"
+
+let il_of_vvunop = function
+  | V128 V128Op.Not ->
+    let symbols = [ Term "V128"; NT ([ Term "Not" ] #@ "vvunop") ] in
+    symbols #@ "vvunop_"
+
+let il_of_vvbinop = function
+  | V128 V128Op.And ->
+    let symbols = [ Term "V128"; NT ([ Term "And" ] #@ "vvbinop") ] in
+    symbols #@ "vvbinop_"
+  | V128 V128Op.Or ->
+    let symbols = [ Term "V128"; NT ([ Term "Or" ] #@ "vvbinop") ] in
+    symbols #@ "vvbinop_"
+  | V128 V128Op.Xor ->
+    let symbols = [ Term "V128"; NT ([ Term "Xor" ] #@ "vvbinop") ] in
+    symbols #@ "vvbinop_"
+  | V128 V128Op.AndNot ->
+    let symbols = [ Term "V128"; NT ([ Term "AndNot" ] #@ "vvbinop") ] in
+    symbols #@ "vvbinop_"
+
+let il_of_vvternop = function
+  | V128 V128Op.Bitselect ->
+    let symbols = [ Term "V128"; NT ([ Term "Bitselect" ] #@ "vvternop") ] in
+    symbols #@ "vvternop_"
+
+let il_of_vnsplatop : V128Op.nsplatop -> Value.t = function
+  | V128Op.Splat -> [ Term "Splat" ] #@ "vnsplatop"
+
+let il_of_vsplatop = il_of_vop il_of_vnsplatop il_of_vnsplatop
+
+let il_of_int_vnextractop : Pack.extension V128Op.nextractop -> Value.t = function
+  | V128Op.Extract (i, ext) ->
+    let symbols = [ Term "Extract"; NT (Value.tuple [ (il_of_int i); (il_of_extension ext) ]) ] in
+    symbols #@ "vnextractop"
+
+let il_of_float_vnextractop : unit V128Op.nextractop -> Value.t = function
+  | V128Op.Extract (i, _) ->
+    let symbols = [ Term "Extract"; NT (Value.tuple [ (il_of_int i); (il_of_void ()) ]) ] in
+    symbols #@ "vnextractop"
+
+let il_of_vextractop = function
+  | V128 (V128.I8x16 op) ->
+    let symbols = [ Term "V128"; NT ([ Term "I8x16"; NT (il_of_int_vnextractop op) ] #@ "vextractop") ] in
+    symbols #@ "vextractop_"
+  | V128 (V128.I16x8 op) ->
+    let symbols = [ Term "V128"; NT ([ Term "I16x8"; NT (il_of_int_vnextractop op) ] #@ "vextractop") ] in
+    symbols #@ "vextractop_"
+  | V128 (V128.I32x4 op) ->
+    let symbols = [ Term "V128"; NT ([ Term "I32x4"; NT (il_of_float_vnextractop op) ] #@ "vextractop") ] in
+    symbols #@ "vextractop_"
+  | V128 (V128.I64x2 op) ->
+    let symbols = [ Term "V128"; NT ([ Term "I64x2"; NT (il_of_float_vnextractop op) ] #@ "vextractop") ] in
+    symbols #@ "vextractop_"
+  | V128 (V128.F32x4 op) ->
+    let symbols = [ Term "V128"; NT ([ Term "F32x4"; NT (il_of_float_vnextractop op) ] #@ "vextractop") ] in
+    symbols #@ "vextractop_"
+  | V128 (V128.F64x2 op) ->
+    let symbols = [ Term "V128"; NT ([ Term "F64x2"; NT (il_of_float_vnextractop op) ] #@ "vextractop") ] in
+    symbols #@ "vextractop_"
+
+let il_of_vnreplaceop : V128Op.nreplaceop -> Value.t = function
+  | V128Op.Replace i ->
+    let symbols = [ Term "Replace"; NT (il_of_int i) ] in
+    symbols #@ "vnreplaceop"
+
+let il_of_vreplaceop = il_of_vop il_of_vnreplaceop il_of_vnreplaceop
+
+let il_of_select_type_opt = function
+  | Some vtl ->
+    let valtype_list_typ = iter_t List (var_t "valtype") in
+    let v = il_of_list "valtype" il_of_val_type vtl in
+    Make.opt (iter_t Opt valtype_list_typ) (Some v)
+  | None ->
+    let valtype_list_typ = iter_t List (var_t "valtype") in
+    Make.opt (iter_t Opt valtype_list_typ) None
+
+let rec il_of_instr instr =
   match instr.it with
+  | Unreachable ->
+    [ Term "UNREACHABLE" ] #@ "instr"
+  | Nop ->
+    [ Term "NOP" ] #@ "instr"
+  | Drop ->
+    [ Term "DROP" ] #@ "instr"
+  | Select vt_opt ->
+    let symbols = [ Term "SELECT"; NT (il_of_select_type_opt vt_opt) ] in
+    symbols #@ "instr"
+  | Block (bt, instrs) ->
+    let symbols = [ Term "BLOCK"; NT (il_of_block_type bt); NT (il_of_list "instr" il_of_instr instrs) ] in
+    symbols #@ "instr"
+  | Loop (bt, instrs) ->
+    let symbols = [ Term "LOOP"; NT (il_of_block_type bt); NT (il_of_list "instr" il_of_instr instrs) ] in
+    symbols #@ "instr"
+  | If (bt, instrs1, instrs2) ->
+    let symbols = [ Term "IF"; NT (il_of_block_type bt); NT (il_of_list "instr" il_of_instr instrs1); Term "ELSE"; NT (il_of_list "instr" il_of_instr instrs2) ] in
+    symbols #@ "instr"
+  | Br idx ->
+    let symbols = [ Term "BR"; NT (il_of_idx "labelidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | BrIf idx ->
+    let symbols = [ Term "BR_IF"; NT (il_of_idx "labelidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | BrTable (idxl, idx) ->
+    let symbols = [ Term "BR_TABLE"; NT (il_of_list "labelidx" (fun i -> il_of_idx "labelidx" (i.it $ no_region)) idxl); NT (il_of_idx "labelidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | BrOnNull idx ->
+    let symbols = [ Term "BR_ON_NULL"; NT (il_of_idx "labelidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | BrOnNonNull idx ->
+    let symbols = [ Term "BR_ON_NON_NULL"; NT (il_of_idx "labelidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | BrOnCast (idx, rt1, rt2) ->
+    let symbols = [ Term "BR_ON_CAST"; NT (il_of_idx "labelidx" (idx.it $ no_region)); NT (il_of_ref_type rt1); NT (il_of_ref_type rt2) ] in
+    symbols #@ "instr"
+  | BrOnCastFail (idx, rt1, rt2) ->
+    let symbols = [ Term "BR_ON_CAST_FAIL"; NT (il_of_idx "labelidx" (idx.it $ no_region)); NT (il_of_ref_type rt1); NT (il_of_ref_type rt2) ] in
+    symbols #@ "instr"
+  | Return ->
+    [ Term "RETURN" ] #@ "instr"
+  | Call idx ->
+    let symbols = [ Term "CALL"; NT (il_of_idx "funcidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | CallRef idx ->
+    let symbols = [ Term "CALL_REF"; NT (il_of_idx "typeidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | CallIndirect (idx1, idx2) ->
+    let symbols = [ Term "CALL_INDIRECT"; NT (il_of_idx "tableidx" (idx1.it $ no_region)); NT (il_of_idx "typeidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ReturnCall idx ->
+    let symbols = [ Term "RETURN_CALL"; NT (il_of_idx "funcidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ReturnCallRef idx ->
+    let symbols = [ Term "RETURN_CALL_REF"; NT (il_of_idx "typeidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ReturnCallIndirect (idx1, idx2) ->
+    let symbols = [ Term "RETURN_CALL_INDIRECT"; NT (il_of_idx "tableidx" (idx1.it $ no_region)); NT (il_of_idx "typeidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | Throw idx ->
+    let symbols = [ Term "THROW"; NT (il_of_idx "tagidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ThrowRef ->
+    [ Term "THROW_REF" ] #@ "instr"
+  | TryTable (bt, catches, instrs) ->
+    let symbols = [ Term "TRY_TABLE"; NT (il_of_block_type bt); NT (il_of_list "catch" il_of_catch catches); NT (il_of_list "instr" il_of_instr instrs) ] in
+    symbols #@ "instr"
   | LocalGet idx ->
     let symbols = [ Term "LOCAL.GET"; NT (il_of_idx "localidx" (idx.it $ no_region)) ] in
     symbols #@ "instr"
@@ -624,6 +941,112 @@ let il_of_instr instr =
   | TableInit (idx1, idx2) ->
     let symbols = [ Term "TABLE.INIT"; NT (il_of_idx "tableidx" (idx1.it $ no_region)); NT (il_of_idx "elemidx" (idx2.it $ no_region)) ] in
     symbols #@ "instr"
+  | ElemDrop idx ->
+    let symbols = [ Term "ELEM.DROP"; NT (il_of_idx "elemidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | Load (idx, loadop) ->
+    let symbols = [ Term "LOAD"; NT (il_of_idx "memidx" (idx.it $ no_region)); NT (il_of_loadop loadop) ] in
+    symbols #@ "instr"
+  | Store (idx, storeop) ->
+    let symbols = [ Term "STORE"; NT (il_of_idx "memidx" (idx.it $ no_region)); NT (il_of_storeop storeop) ] in
+    symbols #@ "instr"
+  | VecLoad (idx, vloadop) ->
+    let symbols = [ Term "VEC.LOAD"; NT (il_of_idx "memidx" (idx.it $ no_region)); NT (il_of_vec_loadop vloadop) ] in
+    symbols #@ "instr"
+  | VecStore (idx, vstoreop) ->
+    let symbols = [ Term "VEC.STORE"; NT (il_of_idx "memidx" (idx.it $ no_region)); NT (il_of_vec_storeop vstoreop) ] in
+    symbols #@ "instr"
+  | VecLoadLane (idx, vlaneop, i) ->
+    let symbols = [ Term "VEC.LOAD_LANE"; NT (il_of_idx "memidx" (idx.it $ no_region)); NT (il_of_vec_laneop vlaneop); NT (il_of_int i) ] in
+    symbols #@ "instr"
+  | VecStoreLane (idx, vlaneop, i) ->
+    let symbols = [ Term "VEC.STORE_LANE"; NT (il_of_idx "memidx" (idx.it $ no_region)); NT (il_of_vec_laneop vlaneop); NT (il_of_int i) ] in
+    symbols #@ "instr"
+  | MemorySize idx ->
+    let symbols = [ Term "MEMORY.SIZE"; NT (il_of_idx "memidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | MemoryGrow idx ->
+    let symbols = [ Term "MEMORY.GROW"; NT (il_of_idx "memidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | MemoryFill idx ->
+    let symbols = [ Term "MEMORY.FILL"; NT (il_of_idx "memidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | MemoryCopy (idx1, idx2) ->
+    let symbols = [ Term "MEMORY.COPY"; NT (il_of_idx "memidx" (idx1.it $ no_region)); NT (il_of_idx "memidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | MemoryInit (idx1, idx2) ->
+    let symbols = [ Term "MEMORY.INIT"; NT (il_of_idx "memidx" (idx1.it $ no_region)); NT (il_of_idx "dataidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | DataDrop idx ->
+    let symbols = [ Term "DATA.DROP"; NT (il_of_idx "dataidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | RefNull ht ->
+    let symbols = [ Term "REF.NULL"; NT (il_of_heap_type ht) ] in
+    symbols #@ "instr"
+  | RefFunc idx ->
+    let symbols = [ Term "REF.FUNC"; NT (il_of_idx "funcidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | RefIsNull ->
+    [ Term "REF.IS_NULL" ] #@ "instr"
+  | RefAsNonNull ->
+    [ Term "REF.AS_NON_NULL" ] #@ "instr"
+  | RefTest rt ->
+    let symbols = [ Term "REF.TEST"; NT (il_of_ref_type rt) ] in
+    symbols #@ "instr"
+  | RefCast rt ->
+    let symbols = [ Term "REF.CAST"; NT (il_of_ref_type rt) ] in
+    symbols #@ "instr"
+  | RefEq ->
+    [ Term "REF.EQ" ] #@ "instr"
+  | RefI31 ->
+    [ Term "REF.I31" ] #@ "instr"
+  | I31Get ext ->
+    let symbols = [ Term "I31.GET"; NT (il_of_extension ext) ] in
+    symbols #@ "instr"
+  | StructNew (idx, initop) ->
+    let symbols = [ Term "STRUCT.NEW"; NT (il_of_idx "typeidx" (idx.it $ no_region)); NT (il_of_initop initop) ] in
+    symbols #@ "instr"
+  | StructGet (idx1, idx2, ext_opt) ->
+    let symbols = [ Term "STRUCT.GET"; NT (il_of_idx "typeidx" (idx1.it $ no_region)); NT (il_of_idx "typeidx" (idx2.it $ no_region)); NT (il_of_opt "extension" il_of_extension ext_opt) ] in
+    symbols #@ "instr"
+  | StructSet (idx1, idx2) ->
+    let symbols = [ Term "STRUCT.SET"; NT (il_of_idx "typeidx" (idx1.it $ no_region)); NT (il_of_idx "typeidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ArrayNew (idx, initop) ->
+    let symbols = [ Term "ARRAY.NEW"; NT (il_of_idx "typeidx" (idx.it $ no_region)); NT (il_of_initop initop) ] in
+    symbols #@ "instr"
+  | ArrayNewFixed (idx, n) ->
+    let symbols = [ Term "ARRAY.NEW_FIXED"; NT (il_of_idx "typeidx" (idx.it $ no_region)); NT (Value.nat (bigint_of_nat32 n)) ] in
+    symbols #@ "instr"
+  | ArrayNewElem (idx1, idx2) ->
+    let symbols = [ Term "ARRAY.NEW_ELEM"; NT (il_of_idx "typeidx" (idx1.it $ no_region)); NT (il_of_idx "elemidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ArrayNewData (idx1, idx2) ->
+    let symbols = [ Term "ARRAY.NEW_DATA"; NT (il_of_idx "typeidx" (idx1.it $ no_region)); NT (il_of_idx "dataidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ArrayGet (idx, ext_opt) ->
+    let symbols = [ Term "ARRAY.GET"; NT (il_of_idx "typeidx" (idx.it $ no_region)); NT (il_of_opt "extension" il_of_extension ext_opt) ] in
+    symbols #@ "instr"
+  | ArraySet idx ->
+    let symbols = [ Term "ARRAY.SET"; NT (il_of_idx "typeidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ArrayLen ->
+    [ Term "ARRAY.LEN" ] #@ "instr"
+  | ArrayCopy (idx1, idx2) ->
+    let symbols = [ Term "ARRAY.COPY"; NT (il_of_idx "typeidx" (idx1.it $ no_region)); NT (il_of_idx "typeidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ArrayFill idx ->
+    let symbols = [ Term "ARRAY.FILL"; NT (il_of_idx "typeidx" (idx.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ArrayInitData (idx1, idx2) ->
+    let symbols = [ Term "ARRAY.INIT_DATA"; NT (il_of_idx "typeidx" (idx1.it $ no_region)); NT (il_of_idx "dataidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ArrayInitElem (idx1, idx2) ->
+    let symbols = [ Term "ARRAY.INIT_ELEM"; NT (il_of_idx "typeidx" (idx1.it $ no_region)); NT (il_of_idx "elemidx" (idx2.it $ no_region)) ] in
+    symbols #@ "instr"
+  | ExternConvert op ->
+    let symbols = [ Term "EXTERN.CONVERT"; NT (il_of_externop op) ] in
+    symbols #@ "instr"
   | Const num ->
     let symbols = [ Term "CONST"; NT (il_of_num num.it) ] in
     symbols #@ "instr"
@@ -657,19 +1080,39 @@ let il_of_instr instr =
   | VecCompare vop ->
     let symbols = [ Term "VEC.COMPARE"; NT (il_of_vrelop vop) ] in
     symbols #@ "instr"
-  (*
-  | VecConvert vop ->
   | VecTernary vop ->
+    let symbols = [ Term "VEC.TERNARY"; NT (il_of_vternop vop) ] in
+    symbols #@ "instr"
+  | VecConvert vop ->
+    let symbols = [ Term "VEC.CONVERT"; NT (il_of_vcvtop vop) ] in
+    symbols #@ "instr"
   | VecShift vop ->
+    let symbols = [ Term "VEC.SHIFT"; NT (il_of_vshiftop vop) ] in
+    symbols #@ "instr"
   | VecBitmask vop ->
+    let symbols = [ Term "VEC.BITMASK"; NT (il_of_vbitmaskop vop) ] in
+    symbols #@ "instr"
   | VecTestBits vop ->
+    let symbols = [ Term "VEC.TESTBITS"; NT (il_of_vvtestop vop) ] in
+    symbols #@ "instr"
   | VecUnaryBits vop ->
+    let symbols = [ Term "VEC.UNARYBITS"; NT (il_of_vvunop vop) ] in
+    symbols #@ "instr"
   | VecBinaryBits vop ->
+    let symbols = [ Term "VEC.BINARYBITS"; NT (il_of_vvbinop vop) ] in
+    symbols #@ "instr"
   | VecTernaryBits vop ->
+    let symbols = [ Term "VEC.TERNARYBITS"; NT (il_of_vvternop vop) ] in
+    symbols #@ "instr"
   | VecSplat vop ->
+    let symbols = [ Term "VEC.SPLAT"; NT (il_of_vsplatop vop) ] in
+    symbols #@ "instr"
   | VecExtract vop ->
-  | VecReplace vop -> *)
-  | _ -> failwith "il_of_instr: not implemented yet"
+    let symbols = [ Term "VEC.EXTRACT"; NT (il_of_vextractop vop) ] in
+    symbols #@ "instr"
+  | VecReplace vop ->
+    let symbols = [ Term "VEC.REPLACE"; NT (il_of_vreplaceop vop) ] in
+    symbols #@ "instr"
 
 let il_of_const const =
     il_of_list "instr" il_of_instr const.it
@@ -732,26 +1175,22 @@ let il_of_data data =
     (wrap_atom "DINIT", Value.text data.it.dinit);
     (wrap_atom "DMODE", il_of_segment data.it.dmode); ]
 
-let il_of_import_desc module_ idesc =
+let il_of_import_desc _ idesc =
   match idesc.it with
   | FuncImport x ->
-    let dts = def_types_of module_ in
-    let dt = x.it |> Int32.to_int |> List.nth dts |> il_of_def_type in
-    let symbols = [ Term "FuncImport"; NT dt ] in
+    let symbols = [ Term "FuncImport"; NT (il_of_idx "typeidx" x) ] in
     symbols #@ "importdesc"
   | TableImport tt ->
     let symbols = [ Term "TableImport"; NT (il_of_table_type tt) ] in
     symbols #@ "importdesc"
   | MemoryImport mt ->
-    let symbols = [ Term "MemoryImport"; NT (il_of_memory_type mt) ] in
+    let symbols = [ Term "MemImport"; NT (il_of_memory_type mt) ] in
     symbols #@ "importdesc"
   | GlobalImport gt ->
     let symbols = [ Term "GlobalImport"; NT (il_of_global_type gt) ] in
     symbols #@ "importdesc"
   | TagImport x ->
-    let dts = def_types_of module_ in
-    let dt = x.it |> Int32.to_int |> List.nth dts |> il_of_def_type in
-    let symbols = [ Term "TagImport"; NT dt ] in
+    let symbols = [ Term "TagImport"; NT (il_of_idx "typeidx" x) ] in
     symbols #@ "importdesc"
 
 let il_of_import module_ import =
