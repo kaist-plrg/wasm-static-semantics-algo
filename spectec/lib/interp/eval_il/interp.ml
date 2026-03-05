@@ -569,21 +569,53 @@ and eval_slice_exp (note : typ') (ctx : Ctx.t) (exp_b : exp) (exp_i : exp)
 
 and eval_upd_exp (_note : typ') (ctx : Ctx.t) (exp_b : exp) (path : path)
     (exp_f : exp) : Ctx.t * value =
-  let rec eval_access_path value_b path =
+  let rec eval_access_path ctx value_b path =
     match path.it with
-    | RootP -> value_b
+    | RootP -> (ctx, value_b)
     | DotP (path, atom) ->
-        let value = eval_access_path value_b path in
+        let ctx, value = eval_access_path ctx value_b path in
         let fields = value |> Value.get_struct in
-        fields
-        |> List.map (fun (atom, value) -> (atom.it, value))
-        |> List.assoc atom.it
-    | _ -> failwith "(TODO) access_path"
-  and eval_update_path value_b path value_n =
+        let value_res =
+          fields
+          |> List.map (fun (atom, value) -> (atom.it, value))
+          |> List.assoc atom.it
+        in
+        (ctx, value_res)
+    | IdxP (path, exp) ->
+        let ctx, value_base = eval_access_path ctx value_b path in
+        let ctx, value_idx = eval_exp ctx exp in
+        let values = Value.get_list value_base in
+        let idx =
+          value_idx |> Value.get_num |> Num.to_int |> Bigint.to_int_exn
+        in
+        assert (idx < List.length values);
+        let value_res = List.nth values idx in
+        (ctx, value_res)
+    | SliceP (path, exp_l, exp_h) ->
+        let ctx, value_base = eval_access_path ctx value_b path in
+        let ctx, value_l = eval_exp ctx exp_l in
+        let ctx, value_h = eval_exp ctx exp_h in
+        let values = Value.get_list value_base in
+        let idx_l =
+          value_l |> Value.get_num |> Num.to_int |> Bigint.to_int_exn
+        in
+        let idx_h =
+          value_h |> Value.get_num |> Num.to_int |> Bigint.to_int_exn
+        in
+        let values_slice =
+          List.mapi
+            (fun idx value ->
+              if idx_l <= idx && idx < idx_h then Some value else None)
+            values
+          |> List.filter_map Fun.id
+        in
+        let value_res = Value.Make.list path.note values_slice in
+        (ctx, value_res)
+  and eval_update_path ctx value_b path value_n =
     match path.it with
-    | RootP -> value_n
+    | RootP -> (ctx, value_n)
     | DotP (path, atom) ->
-        let value = eval_access_path value_b path in
+        let ctx, value = eval_access_path ctx value_b path in
         let fields = value |> Value.get_struct in
         let fields =
           List.map
@@ -592,14 +624,39 @@ and eval_upd_exp (_note : typ') (ctx : Ctx.t) (exp_b : exp) (path : path)
               else (atom_f, value_f))
             fields
         in
-        let value = Value.Make.record path.note fields in
-        eval_update_path value_b path value
-    | _ -> failwith "(TODO) update"
+        let value_updated = Value.Make.record path.note fields in
+        eval_update_path ctx value_b path value_updated
+    | IdxP (path, exp) ->
+        let ctx, value_base = eval_access_path ctx value_b path in
+        let ctx, value_idx = eval_exp ctx exp in
+        let values = Value.get_list value_base in
+        let idx =
+          value_idx |> Value.get_num |> Num.to_int |> Bigint.to_int_exn
+        in
+        let rec split_prefix prefix_rev steps values =
+          match (steps, values) with
+          | 0, _ :: values_t -> (prefix_rev, values_t)
+          | s, value_h :: values_t when s > 0 ->
+              split_prefix (value_h :: prefix_rev) (s - 1) values_t
+          | _, _ ->
+              failwith
+                (Printf.sprintf "Index %d out of bounds for list of length %d"
+                   idx (List.length values))
+        in
+        let prefix_rev, suffix = split_prefix [] idx values in
+        let values_updated =
+          List.rev_append prefix_rev (value_n :: suffix)
+          |> Value.Make.list path.note
+        in
+        eval_update_path ctx value_b path values_updated
+    | SliceP (_path, _exp_l, _exp_h) ->
+        failwith "(TODO) update: SliceP update not yet implemented"
   in
   let ctx, value_b = eval_exp ctx exp_b in
   let ctx, value_f = eval_exp ctx exp_f in
-  let value_res = eval_update_path value_b path value_f in
+  let ctx, value_res = eval_update_path ctx value_b path value_f in
   (ctx, value_res)
+
 
 (* Function call expression evaluation *)
 
