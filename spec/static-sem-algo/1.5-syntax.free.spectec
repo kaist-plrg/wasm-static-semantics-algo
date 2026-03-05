@@ -131,10 +131,12 @@ def $free_catch(CatchRef x y) = $free_union($update_tags($free_idx(x)), $update_
 def $free_catch(CatchAll x) = $update_labels($free_idx(x))
 def $free_catch(CatchAllRef x) = $update_labels($free_idx(x))
 
-dec $free_idx'(idx) : free
-def $free_idx'(x) = $update_labels($free_idx(x))
+dec $update_label(idx) : free
+def $update_label(x) = $update_labels($free_idx(x))
 
 def $free_type_(type) = $free_rectype(type)
+def $free_typevar(StatX x) = $update_types($free_idx(x))
+def $free_typevar(RecX _) = $free_empty
 def $free_rectype(RecT st*) = $free_list<subtype>(def $free_subtype, st*)
 def $free_subtype(SubT fin ht* strt) = $free_union($free_list<heaptype>(def $free_heaptype, ht*), $free_strtype(strt))
 def $free_heaptype(ht) = $free_typevar(tv)
@@ -173,7 +175,7 @@ def $free_instr(LOOP blocktype instr*) = $free_union($free_blocktype(blocktype),
 def $free_instr(IF blocktype instr_t* ELSE instr_f*) = $free_union($free_blocktype(blocktype), $free_union($free_block(instr_t*), $free_block(instr_f*)))
 def $free_instr(BR x) = $update_labels($free_idx(x))
 def $free_instr(BR_IF x) = $update_labels($free_idx(x))
-def $free_instr(BR_TABLE x* y) = $free_list<idx>(def $free_idx', y :: x*)
+def $free_instr(BR_TABLE x* y) = $free_list<idx>(def $update_label, y :: x*)
 def $free_instr(BR_ON_NULL x) = $update_labels($free_idx(x))
 def $free_instr(BR_ON_NON_NULL x) = $update_labels($free_idx(x))
 def $free_instr(BR_ON_CAST x rt_1 rt_2) = $free_union($update_labels($free_idx(x)), $free_union($free_reftype(rt_1), $free_reftype(rt_2)))
@@ -292,20 +294,20 @@ def $free_elem(elem) = free
 def $free_data(data) = $free_segmentmode(def $update_mems, data.DMODE)
 
 dec $free_importdesc(importdesc) : free
-def $free_importdesc(FuncImport x) = $update_types(`{ [x] })
+def $free_importdesc(FuncImport x) = $update_types($free_idx(x))
 def $free_importdesc(TableImport tt) = $free_tabletype(tt)
 def $free_importdesc(MemImport mt) = $free_memtype(mt)
 def $free_importdesc(GlobalImport gt) = $free_globaltype(gt)
-def $free_importdesc(TagImport x) = $update_tags(`{ [x] })
+def $free_importdesc(TagImport x) = $update_tags($free_idx(x))
 
 def $free_import(import) = $free_importdesc(import.IDESC)
 
 dec $free_exportdesc(exportdesc) : free
-def $free_exportdesc(FuncExport x) = $update_funcs(`{ [x] })
-def $free_exportdesc(TableExport x) = $update_tables(`{ [x] })
-def $free_exportdesc(MemExport x) = $update_mems(`{ [x] })
-def $free_exportdesc(GlobalExport x) = $update_globals(`{ [x] })
-def $free_exportdesc(TagExport x) = $update_tags(`{ [x] })
+def $free_exportdesc(FuncExport x) = $update_funcs($free_idx(x))
+def $free_exportdesc(TableExport x) = $update_tables($free_idx(x))
+def $free_exportdesc(MemExport x) = $update_mems($free_idx(x))
+def $free_exportdesc(GlobalExport x) = $update_globals($free_idx(x))
+def $free_exportdesc(TagExport x) = $update_tags($free_idx(x))
 
 def $free_export(export) = $free_exportdesc(export.EDESC)
 

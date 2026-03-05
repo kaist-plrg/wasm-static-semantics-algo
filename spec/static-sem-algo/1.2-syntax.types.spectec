@@ -40,7 +40,7 @@ syntax resulttype = valtype*
 
 syntax instrtype = InstrT resulttype resulttype localidx*
 
-syntax packtype = I8 | I16
+syntax packtype = I8 | I16 | I32 | I64
 syntax extension = SX | ZX
 
 syntax packshape = Pack8x8 | Pack16x4 | Pack32x2
@@ -142,6 +142,7 @@ dec $subst_functype<X>(X, def $s(typevar, X) : heaptype, functype) : functype
 dec $subst_resulttype<X>(X, def $s(typevar, X) : heaptype, resulttype) : resulttype
 dec $subst_valtype<X>(X, def $s(typevar, X) : heaptype, valtype) : valtype
 dec $subst_reftype<X>(X, def $s(typevar, X) : heaptype, reftype) : reftype
+dec $subst_storagetype<X>(X, def $s(typevar, X) : heaptype, storagetype) : storagetype
 dec $subst_fieldtype<X>(X, def $s(typevar, X) : heaptype, fieldtype) : fieldtype
 dec $subst_deftype<X>(X, def $s(typevar, X) : heaptype, deftype) : deftype
 
@@ -153,8 +154,8 @@ def $s_roll(tv, (x, y)) = VarHT tv
   -- otherwise
 
 dec $s_unroll(typevar, rectype) : heaptype
-def $s_unroll(tv, rect) = DefHT (DefT rect x')
-  -- if tv = StatX x'
+def $s_unroll(tv, rect) = DefHT (DefT rect n)
+  -- if tv = RecX n
 def $s_unroll(tv, rect) = VarHT tv
   -- otherwise
 
@@ -187,6 +188,13 @@ def $subst_strtype<X>(X, def $s, strt) = DefArrayT arraytype'
 def $subst_strtype<X>(X, def $s, strt) = DefFuncT functype'
   -- if strt = DefFuncT functype
   -- if functype' = $subst_functype<X>(X, def $s, functype)
+
+def $subst_storagetype<X>(X, def $s, ValStorageT t) = ValStorageT t'
+  -- if t' = $subst_valtype<X>(X, def $s, t)
+def $subst_storagetype<X>(X, def $s, PackStorageT pt) = PackStorageT pt
+
+def $subst_fieldtype<X>(X, def $s, FieldT mut zt) = FieldT mut zt'
+  -- if zt' = $subst_storagetype<X>(X, def $s, zt)
 
 def $subst_structtype<X>(X, def $s, (StructT yt*)) = StructT yt'*
   -- if (yt' = $subst_fieldtype<X>(X, def $s, yt))*
@@ -241,8 +249,8 @@ def $rolldt(x, rect) = $rolldt'(0, rect')
 
 def $unrollrt(rect) = $subst_rectype<rectype>(rect, def $s_unroll, rect)
 
-def $unrolldt(dt) = st*[i]
-  -- if DefT rect i = dt
+def $unrolldt(dt) = st*[n]
+  -- if DefT rect n = dt
   -- if RecT st* = $unrollrt(rect)
 
 def $expanddt(dt) = strt
@@ -272,6 +280,8 @@ def $vec_size(V128T) = 16
 dec $pack_size(packtype) : int
 def $pack_size(I8) = 1
 def $pack_size(I16) = 2
+def $pack_size(I32) = 4
+def $pack_size(I64) = 8
 
 dec $unpacked_storage_type(storagetype) : valtype
 def $unpacked_storage_type(ValStorageT t) = t

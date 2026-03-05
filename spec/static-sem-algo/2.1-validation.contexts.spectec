@@ -69,26 +69,26 @@ def $pop(C, (Ellipses, t_1*), (Ellipses, t_2*)) = (Ellipses, eps)
   -- if n_2 = |t_2*|
   -- if n = $min_(n_1, n_2)
   -- if n_3 = $(n_1-n)
-  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- if t_2'* = t_2*[n_2-n:n]
   -- Match_resulttype: C |- ($make_<valtype>(BotT, n_3) ++ t_2'*) t_1* : OK
 def $pop(C, (NoEllipses, t_1*), (Ellipses, t_2*)) = (Ellipses, t_2*[0:n_2-n])
   -- if n_1 = |t_1*|
   -- if n_2 = |t_2*|
   -- if n = $min_(n_1, n_2)
   -- if n_3 = $(n_1 - n)
-  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- if t_2'* = t_2*[n_2-n:n]
   -- Match_resulttype: C |- ($make_<valtype>(BotT, n_3) ++ t_2'*) t_1* : OK
 def $pop(C, (Ellipses, t_1*), (NoEllipses, t_2*)) = (NoEllipses, eps)
   -- if n_1 = |t_1*|
   -- if n_2 = |t_2*|
   -- if n = $min_(n_1, n_2)
-  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- if t_2'* = t_2*[n_2-n:n]
   -- Match_resulttype: C |- t_2'* t_1* : OK
 def $pop(C, (NoEllipses, t_1*), (NoEllipses, t_2*)) = (NoEllipses, t_2*[0:n_2-n])
   -- if n_1 = |t_1*|
   -- if n_2 = |t_2*|
   -- if n = $min_(n_1, n_2)
-  -- if t_2'* = t_2*[n_2-n:n_2]
+  -- if t_2'* = t_2*[n_2-n:n]
   -- Match_resulttype: C |- t_2'* t_1* : OK
 
 ;; Push
@@ -99,6 +99,9 @@ def $push(C, (Ellipses, t_1*), (ellipses_2, eps)) = (Ellipses, t_1*)
 
 dec $peek(nat, inferresulttype) : valtype
 def $peek(n, (ellipses, t*)) = $rev_<valtype>(t*)[n]
+  -- if $(n < |t*|)
+def $peek(n, (ellipses, t*)) = BotT
+  -- otherwise
 
 dec $peek_ref(nat, inferresulttype) : reftype
 def $peek_ref(n, (ellipses, t*)) = rt

@@ -14,7 +14,7 @@ def $min_(i, j) = i  -- if $(i <= j)
 def $min_(i, j) = j  -- otherwise
 
 dec $lsl_(int, int) : int
-def $lsl_(int_1, int_2) = $lsl_($(int_1 - 1), $(int_2 * 2))
-  -- if $(int_1 > 0)
-def $lsl_(int_1, int_2) = int_2
+def $lsl_(int_1, int_2) = $lsl_($(int_1 * 2), $(int_2 - 1))
+  -- if $(int_2 > 0)
+def $lsl_(int_1, int_2) = int_1
   -- otherwise

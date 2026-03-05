@@ -61,7 +61,8 @@ def $match_heaptype(dt*, DefHT dt_1, ht) = true
 def $match_heaptype(dt*, DefHT dt_1, FuncHT) = true
   -- if DefFuncT _ = $expanddt(dt_1)
 def $match_heaptype(dt*, BotHT, _) = true
-def $match_heaptype(dt*, ht_1, ht_2) = (ht_1 = ht_2) ;; is this possible?
+def $match_heaptype(dt*, ht_1, ht_2) = true
+  -- if ht_1 = ht_2
 def $match_heaptype(dt*, ht_1, ht_2) = false  -- otherwise
 
 def $match_heaptype_exists(dt*, eps, dt_1) = false
@@ -96,7 +97,7 @@ def $match_storagetype(dt*, _, _) = false -- otherwise
 
 def $match_arraytype(dt*, ArrayT yt_1, ArrayT yt_2) = $match_fieldtype(dt*, yt_1, yt_2)
 
-def $match_functype(dt*, FuncT t_1* t_2*, FuncT t_1'* t_2'*) = $match_resulttype(dt*, t_1*, t_1'*) /\ $match_resulttype(dt*, t_2*, t_2'*)
+def $match_functype(dt*, FuncT t_1* t_2*, FuncT t_1'* t_2'*) = $match_resulttype(dt*, t_1'*, t_1*) /\ $match_resulttype(dt*, t_2*, t_2'*)
 
 def $match_resulttype(dt*, t_1* , t_2*) = true
   -- if |t_1*| = |t_2*|
@@ -119,6 +120,7 @@ def $match_structtype(dt*, _, _) = false  -- otherwise
 def $match_strtype(dt*, DefStructT strctt_1, DefStructT strctt_2) = $match_structtype(dt*, strctt_1, strctt_2)
 def $match_strtype(dt*, DefArrayT arrt_1, DefArrayT arrt_2) = $match_arraytype(dt*, arrt_1, arrt_2)
 def $match_strtype(dt*, DefFuncT ft_1, DefFuncT ft_2) = $match_functype(dt*, ft_1, ft_2)
+def $match_strtype(dt*, strt_1, strt_2) = false  -- otherwise
 
 dec $abs_of_str_type(strtype) : heaptype
 dec $top_of_str_type(deftype*, strtype) : heaptype

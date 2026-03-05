@@ -44,7 +44,7 @@ rule Instr_ok/drop:
 
 rule Instr_ok/select-none:
   C_0 irt |- SELECT eps : ({INS (NoEllipses, [t, t, NumT I32T]), OUTS (NoEllipses, [t])}, eps)
-  -- if t = $peek(0, irt)
+  -- if t = $peek(1, irt)
   -- if $is_num_type(t) \/ $is_vec_type(t)
 
 rule Instr_ok/select-some:
@@ -91,10 +91,10 @@ rule Instr_ok/br_on_non_null:
   C_0 irt |- BR_ON_NON_NULL x : ({INS (NoEllipses, t_h* ++ [RefT (Null ht)]), OUTS (NoEllipses, t_h*)}, eps)
   -- if null ht = $peek_ref(0, irt)
   -- if t' = RefT (NoNull ht)
-  -- if i = |C_0.LABELS|
+  -- if i = |C_0.LABELS[x]|
   -- if $(i > 0)
-  -- if t_h* = C_0.LABELS[0:i-1]
-  -- if t_l = C_0.LABELS[i-1]
+  -- if t_h* = C_0.LABELS[x][0:i-1]
+  -- if t_l = C_0.LABELS[x][i-1]
   -- if $match_valtype(C_0.TYPES, t', t_l)
 
 rule Instr_ok/br_on_cast:
@@ -102,10 +102,10 @@ rule Instr_ok/br_on_cast:
   -- Reftype_ok: C_0 |- rt_1 : OK
   -- Reftype_ok: C_0 |- rt_2 : OK
   -- if $match_reftype(C_0.TYPES, rt_2, rt_1)
-  -- if i = |C_0.LABELS|
+  -- if i = |C_0.LABELS[x]|
   -- if $(i > 0)
-  -- if t_h* = C_0.LABELS[0:i-1]
-  -- if t_l = C_0.LABELS[i-1]
+  -- if t_h* = C_0.LABELS[x][0:i-1]
+  -- if t_l = C_0.LABELS[x][i-1]
   -- if $match_valtype(C_0.TYPES, RefT rt_2, t_l)
 
 rule Instr_ok/br_on_cast_fail:
@@ -114,10 +114,10 @@ rule Instr_ok/br_on_cast_fail:
   -- Reftype_ok: C_0 |- rt_2 : OK
   -- if rt_1' = $diff_reftype(rt_1, rt_2)
   -- if $match_reftype(C_0.TYPES, rt_2, rt_1)
-  -- if i = |C_0.LABELS|
+  -- if i = |C_0.LABELS[x]|
   -- if $(i > 0)
-  -- if t_h* = C_0.LABELS[0:i-1]
-  -- if t_l = C_0.LABELS[i-1]
+  -- if t_h* = C_0.LABELS[x][0:i-1]
+  -- if t_l = C_0.LABELS[x][i-1]
   -- if $match_valtype(C_0.TYPES, RefT rt_1', t_l)
 
 rule Instr_ok/call:
@@ -140,6 +140,7 @@ rule Instr_ok/return:
 rule Instr_ok/return_call:
   C_0 irt |- RETURN_CALL x : ({INS (Ellipses, t_1*), OUTS (Ellipses, eps)}, eps)
   -- if FuncT t_1* t_2* = $functype_of_strtype($expanddt(C_0.FUNCS[x]))
+  -- if $match_resulttype(C_0.TYPES, t_2*, C_0.RESULTS)
 
 rule Instr_ok/return_call_ref:
   C_0 irt |- RETURN_CALL_REF x : ({INS (Ellipses, t_1* ++ [RefT (Null (DefHT C_0.TYPES[x]))]), OUTS (Ellipses, eps)}, eps)
@@ -151,6 +152,7 @@ rule Instr_ok/return_call_indirect:
   -- if TableT at lim rt = C_0.TABLES[x]
   -- if FuncT t_1* t_2* = $func_type(C_0, y)
   -- if $match_reftype(C_0.TYPES, rt, (Null FuncHT))
+  -- if $match_resulttype(C_0.TYPES, t_2*, C_0.RESULTS)
 
 rule Instr_ok/throw:
   C_0 irt |- THROW x : ({INS (Ellipses, t_1*), OUTS (Ellipses, eps)}, eps)
@@ -172,11 +174,11 @@ rule Instr_ok/local.get:
   -- if LocalT Set t = C_0.LOCALS[x]
 
 rule Instr_ok/local.set:
-  C_0 irt |- LOCAL.SET x : ({INS (NoEllipses, [t]), OUTS (NoEllipses, eps)}, eps)
+  C_0 irt |- LOCAL.SET x : ({INS (NoEllipses, [t]), OUTS (NoEllipses, eps)}, [x])
   -- if LocalT init t = C_0.LOCALS[x]
 
 rule Instr_ok/local.tee:
-  C_0 irt |- LOCAL.TEE x : ({INS (NoEllipses, [t]), OUTS (NoEllipses, [t])}, eps)
+  C_0 irt |- LOCAL.TEE x : ({INS (NoEllipses, [t]), OUTS (NoEllipses, [t])}, [x])
   -- if LocalT init t = C_0.LOCALS[x]
 
 rule Instr_ok/global.get:
