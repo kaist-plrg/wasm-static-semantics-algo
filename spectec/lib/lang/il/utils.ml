@@ -83,6 +83,7 @@ let wrap_atom (s : string) : atom =
 (* Construct types with no region *)
 
 let var_t (s : string) : typ' = VarT (s $ no_region, [])
+let var_t' (s : string) (targs : targ list) : typ' = VarT (s $ no_region, targs)
 let iter_t (i : iter) (t : typ') : typ' = IterT (t $ no_region, i)
 
 (* convert a symbol list to a CaseV value *)
