@@ -305,3 +305,12 @@ def $is_vec_type(t) = false
 dec $is_packed_storage_type(storagetype) : bool
 def $is_packed_storage_type(ValStorageT _) = false
 def $is_packed_storage_type(PackStorageT _) = true
+
+dec $diff_reftype(reftype, reftype) : reftype
+def $diff_reftype(null_1 ht_1, Null ht_2) = (NoNull ht_1)
+def $diff_reftype(null_1 ht_1, NoNull ht_2) = (null_1 ht_1)
+
+dec $defaultable(valtype) : bool
+def $defaultable(NumT nt) = true
+def $defaultable(VecT vt) = true
+def $defaultable(RefT (null ht)) = (null = Null)

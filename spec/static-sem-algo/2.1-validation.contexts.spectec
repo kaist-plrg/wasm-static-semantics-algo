@@ -56,12 +56,6 @@ rule Match_resulttype:
 dec $stack(resulttype) : (ellipses, resulttype)
 def $stack(resulttype) = (NoEllipses, resulttype)
 
-dec $make_<X>(X, nat) : X*
-def $make_<X>(X, n) = eps
-  -- if n = 0
-def $make_<X>(X, n) = $make_<X>(X, $(n-1)) ++ [X]
-  -- if $(n > 0)
-
 ;; Pop
 dec $pop(context, (ellipses, resulttype), (ellipses, resulttype)) : (ellipses, resulttype)
 def $pop(C, (Ellipses, t_1*), (Ellipses, t_2*)) = (Ellipses, eps)
@@ -108,3 +102,21 @@ def $peek_ref(n, (ellipses, t*)) = rt
   -- if $peek(n, (ellipses, t*)) = RefT rt
 def $peek_ref(n, (ellipses, t*)) = (NoNull BotHT)
   -- if $peek(n, (ellipses, t*)) = BotT
+
+dec $local(context, typeidx) : localtype
+def $local(C, x) = C.LOCALS[x]
+
+dec $init_local(context, typeidx) : context
+def $init_local(C, x) = C[ .LOCALS[x] = (LocalT Set t)]
+  -- if LocalT init t = $local(C, x)
+
+dec $init_locals(context, typeidx*) : context
+def $init_locals(C, eps) = C
+def $init_locals(C, x_1 :: x*) = $init_locals($init_local(C, x_1), x*)
+
+dec $init_valtypes(inferresulttype, nat, nat) : valtype*
+def $init_valtypes(irt, i, n) = t :: $init_valtypes(irt, $(i+1), n)
+  -- if $(i < n)
+  -- if t = $peek($(n-i), irt)
+def $init_valtypes(irt, i, n) = eps
+  -- otherwise

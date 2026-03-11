@@ -28,10 +28,6 @@ relation Const_ok: context valtype |- const : OK            hint(input %0 %1 %2)
 relation Module_ok: |- module : OK                          hint(input %0)
 relation Modules_ok: |- module* : OK                        hint(input %0)
 
-dec $functype(context, typeidx) : functype
-def $functype(C, x) = ft
-  -- if DefFuncT ft = $expanddt(C.TYPES[x])
-
 ;; Types
 
 rule Type_ok:
@@ -50,7 +46,7 @@ rule Types_ok/nil:
 
 rule Import_ok/func:
   C_0 |- { MODULENAME _, ITEMNAME _, IDESC (FuncImport x) } : C_1
-  -- if ft = $functype(C_0, x)
+  -- if ft = $func_type(C_0, x)
   -- if C_1 = C_0[ .FUNCS = C_0.FUNCS ++ C_0.TYPES[x] ]
 
 rule Import_ok/global:
@@ -70,7 +66,7 @@ rule Import_ok/mem:
 
 rule Import_ok/tag:
   C_0 |- { MODULENAME _, ITEMNAME _, IDESC (TagImport x) } : C_1
-  -- if ft = $functype(C_0, x)
+  -- if ft = $func_type(C_0, x)
   -- if C_1 = C_0[ .TAGS = C_0.TAGS ++ [TagT (C_0.TYPES[x])] ]
 
 rule Imports_ok/cons:
@@ -97,7 +93,7 @@ rule Local_ok/unset:
 
 rule Funcbody_ok:
   C_0 |- { FTYPE x, LOCALS local*, BODY instr* } : OK
-  -- if FuncT t_1* t_2* = $functype(C_0, x)
+  -- if FuncT t_1* t_2* = $func_type(C_0, x)
   -- (Local_ok: C_0 |- local : localtype)*
   -- if (localtype' = LocalT Set t_1)*
   -- if C_1 = C_0[ .LOCALS = localtype'* ++ localtype* ]
@@ -115,7 +111,7 @@ rule Funcs_ok/nil:
 
 rule Func_ok:
   C_0 |- { FTYPE x, LOCALS local*, BODY instr* } : C_1
-  -- if ft = $functype(C_0, x)
+  -- if ft = $func_type(C_0, x)
   -- if C_1 = C_0[ .FUNCS = C_0.FUNCS ++ [C_0.TYPES[x]] ]
 
 dec $is_const(context, instr) : bool
@@ -194,7 +190,7 @@ rule Tags_ok/nil:
 
 rule Tag_ok:
   C_0 |- { TGTYPE x } : C_1
-  -- if FuncT _ eps = $functype(C_0, x)
+  -- if FuncT _ eps = $func_type(C_0, x)
   -- if C_1 = C_0[ .TAGS = C_0.TAGS ++ [TagT (C_0.TYPES[x])] ]
 
 rule Elems_ok/cons:

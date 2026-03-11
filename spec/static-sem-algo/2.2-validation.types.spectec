@@ -2,8 +2,6 @@
 ;; Validation of Types
 ;;
 
-;; Value types
-
 relation Numtype_ok: context |- numtype : OK    hint(input %0 %1)
 relation Vectype_ok: context |- vectype : OK    hint(input %0 %1)
 relation Heaptype_ok: context |- heaptype : OK  hint(input %0 %1)
@@ -154,48 +152,6 @@ rule Rectype_ok:
   -- (Subtype_ok: C_1 |- st : OK)*
   -- (Subtype_sub_ok: C_1 $(x+n) |- st : OK)*
 
-relation Pack_ok: int |- packtype : OK   hint(input %0 %1)
-relation Unop_ok: |- unop_ : OK          hint(input %0)
-relation Vecbinop_ok: |- vbinop_ : OK    hint(input %0)
-
-rule Pack_ok:
-  i |- packtype : OK
-  -- if $($pack_size(packtype) < i)
-
-rule Unop_ok/i32:
-  |- uop : OK
-  -- if uop = I32 (ExtendS packtype)
-  -- Pack_ok: $num_size($type_num<iunop, iunop, funop, funop>(uop)) |- packtype : OK
-
-rule Unop_ok/i64:
-  |- uop : OK
-  -- if uop = I64 (ExtendS packtype)
-  -- Pack_ok: $num_size($type_num<iunop, iunop, funop, funop>(uop)) |- packtype : OK
-
-rule Unop_ok/else:
-  |- uop : OK
-
-dec $check_lane_index(int*) : bool
-def $check_lane_index(i_1 :: i*) = false
-  -- if $(i_1 >= 32)
-def $check_lane_index(i_1 :: i*) = $check_lane_index(i*)
-  -- if $(i_1 < 32)
-def $check_lane_index(eps) = true
-
-dec $check_vbop_shuffle(vbinop_) : bool
-def $check_vbop_shuffle(V128 (I8x16 (Shuffle _))) = true
-def $check_vbop_shuffle(vbop) = false
-  -- otherwise
-
-rule Vecbinop_ok/i816:
-  |- vbop : OK
-  -- if vbop = V128 (I8x16 (Shuffle i*))
-  -- if $check_lane_index(i*)
-
-rule Vecbinop_ok/else:
-  |- vbop : OK
-  -- if ~$check_vbop_shuffle(vbop)
-
 dec $array_type(context, typeidx) : arraytype
 def $array_type(C, x) = arrt
   -- if DefArrayT arrt = $expanddt(C.TYPES[x])
@@ -203,128 +159,6 @@ def $array_type(C, x) = arrt
 dec $struct_type(context, typeidx) : structtype
 def $struct_type(C, x) = strctt
   -- if DefStructT strctt = $expanddt(C.TYPES[x])
-
-relation Loadop_ok: context |- loadop_ : numtype  hint(input %0 %1)
-
-rule Loadop_ok/some-i32at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK (packtype, extension) } : nt
-  -- Pack_ok: $num_size(nt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Loadop_ok/some-i64at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK (packtype, extension) } : nt
-  -- Pack_ok: $num_size(nt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
-
-rule Loadop_ok/none-i32at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
-  -- if int_3 = $num_size(nt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Loadop_ok/none-i64at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
-  -- if int_3 = $num_size(nt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
-
-relation Storeop_ok: context |- storeop_ : numtype  hint(input %0 %1)
-
-rule Storeop_ok/some-i32at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK packtype } : nt
-  -- Pack_ok: $num_size(nt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Storeop_ok/some-i64at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK packtype } : nt
-  -- Pack_ok: $num_size(nt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
-
-rule Storeop_ok/none-i32at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
-  -- if int_3 = $num_size(nt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Storeop_ok/none-i64at:
-  C_0 |- { TYPE nt, ALIGN int_1, OFFSET int_2, PACK eps } : nt
-  -- if int_3 = $num_size(nt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
-
-relation Vloadop_ok: context |- vloadop_ : vectype  hint(input %0 %1)
-
-rule Vloadop_ok/some-i32at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK (packtype, vextension) } : vt
-  -- Pack_ok: $vec_size(vt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Vloadop_ok/some-i64at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK (packtype, vextension) } : vt
-  -- Pack_ok: $vec_size(vt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
-
-rule Vloadop_ok/none-i32at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK eps } : vt
-  -- if int_3 = $vec_size(vt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Vloadop_ok/none-i64at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK eps } : vt
-  -- if int_3 = $vec_size(vt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
-
-relation Vstoreop_ok: context |- vstoreop_ : vectype  hint(input %0 %1)
-
-rule Vstoreop_ok/none-i32at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK void } : vt
-  -- if int_3 = $vec_size(vt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Vstoreop_ok/none-i64at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK void } : vt
-  -- if int_3 = $vec_size(vt)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
-
-relation Vlaneop_ok: context |- vlaneop_ : vectype  hint(input %0 %1)
-
-rule Vlaneop_ok/some-i32at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK packtype } : vt
-  -- Pack_ok: $vec_size(vt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I32AT lim = C_0.MEMS[0]
-  -- if $lt_u(int_2, 4294967296)
-
-rule Vlaneop_ok/some-i64at:
-  C_0 |- { TYPE vt, ALIGN int_1, OFFSET int_2, PACK packtype } : vt
-  -- Pack_ok: $vec_size(vt) |- packtype : OK
-  -- if int_3 = $pack_size(packtype)
-  -- if $($lsl_(1, int_1) >= 1) /\ $($lsl_(1, int_1) <= int_3)
-  -- if MemoryT I64AT lim = C_0.MEMS[0]
 
 dec $func_type(context, typeidx) : functype
 def $func_type(C, x) = ft
@@ -362,7 +196,3 @@ rule Catch_ok/catch_all:
 rule Catch_ok/catch_all_ref:
   C_0 t* |- CatchAllRef x : OK
   -- if $match_resulttype(C_0.TYPES, [RefT (NoNull ExnHT)], C_0.LABELS[x])
-
-dec $diff_reftype(reftype, reftype) : reftype
-def $diff_reftype(null_1 ht_1, Null ht_2) = (NoNull ht_1)
-def $diff_reftype(null_1 ht_1, NoNull ht_2) = (null_1 ht_1)
